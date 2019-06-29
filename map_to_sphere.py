@@ -1,6 +1,6 @@
 import dolfin as df
 from maps import SphereMap
-from io import dump_xdmf
+from io import dump_xdmf, Timeseries
 
 
 R = 1.0
@@ -51,7 +51,7 @@ u_.assign(u_1)
 dt = 0.1
 
 F_t = geo_map.form(1./dt*(u-u_1)*v)
-F_diff = geo_map.form(geo_map.dot(u, v))
+F_diff = geo_map.form(geo_map.dotgrad(u, v))
 F = F_t + F_diff
 
 a_surf = df.lhs(F)
@@ -71,6 +71,8 @@ def btm(x, on_boundary):
     return on_boundary and x[1] < geo_map.s_min+geo_map.eps+100*df.DOLFIN_EPS
 
 
+ts = Timeseries("u_")
+
 Top = df.AutoSubDomain(top)
 Btm = df.AutoSubDomain(btm)
 facets = df.MeshFunction("size_t", ref_mesh, ref_mesh.topology().dim()-1, 0)
@@ -79,19 +81,16 @@ Btm.mark(facets, 2)
 
 t = 0.0
 T = 10.0
-xdmfff = df.XDMFFile(ref_mesh.mpi_comm(), "u_.xdmf")
-xdmfff.parameters["rewrite_function_mesh"] = False
-xdmfff.parameters["flush_output"] = True
 
 it = 0
-xdmfff.write(u_, float(it))
+ts.write(u_, float(it))
 while t < T:
     it += 1
     b = df.assemble(L_surf)
 
     solver.solve(u_.vector(), b)
 
-    xdmfff.write(u_, float(it))
+    ts.write(u_, float(it))
 
     print("int T =", df.assemble(geo_map.form(u_)))
     flx_top = df.assemble(u_.dx(1)*df.ds(
@@ -103,4 +102,4 @@ while t < T:
     u_1.assign(u_)
     t += dt
 
-xdmfff.close()
+ts.close()

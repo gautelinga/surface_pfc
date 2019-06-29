@@ -158,7 +158,7 @@ class GeoMap:
         self.gss = self.get_function("gss")
         self.sqrt_g = self.get_function("sqrt_g")
 
-    def dot(self, u, v):
+    def dotgrad(self, u, v):
         return (self.gtt*u.dx(0)*v.dx(0)
                 + self.gss*u.dx(1)*v.dx(1)
                 + self.gst*u.dx(0)*v.dx(1)
@@ -194,18 +194,23 @@ class GeoMap:
     def compute_pbc(self):
         self.pbc = None
 
+    def mixed_space(self, mixed_el):
+        return df.FunctionSpace(self.ref_mesh,
+                                df.MixedElement(mixed_el),
+                                constrained_domain=self.pbc)
+
     def initialize_ref_space(self, res):
         self.compute_mesh(100)
         self.compute_pbc()
 
         self.dS_ref = df.Measure("dx", domain=self.ref_mesh)
 
-        ref_el = df.FiniteElement("Lagrange", self.ref_mesh.ufl_cell(), 1)
-        self.S_ref = df.FunctionSpace(self.ref_mesh, ref_el,
+        self.ref_el = df.FiniteElement("Lagrange", self.ref_mesh.ufl_cell(), 1)
+        self.S_ref = df.FunctionSpace(self.ref_mesh, self.ref_el,
                                       constrained_domain=self.pbc)
         self.S3_ref = df.FunctionSpace(self.ref_mesh,
                                        df.MixedElement(
-                                           (ref_el, ref_el, ref_el)),
+                                           (self.ref_el, self.ref_el, self.ref_el)),
                                        constrained_domain=self.pbc)
 
         T_vals = df.interpolate(df.Expression("x[0]", degree=1),
@@ -247,7 +252,7 @@ class EllipsoidMap(GeoMap):
         ref_mesh = df.RectangleMesh.create(
             [df.Point(self.t_min, self.s_min + eps),
              df.Point(self.t_max, self.s_max - eps)],
-            [N*res, res], df.cpp.mesh.CellType.Type.quadrilateral)
+            [N*res, res], df.cpp.mesh.CellType.Type.triangle)
         self.ref_mesh = ref_mesh
 
     def compute_pbc(self):
