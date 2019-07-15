@@ -12,7 +12,7 @@ class InitialConditions(df.UserExpression):
         super().__init__(**kwargs)
 
     def eval(self, values, x):
-        values[0] = (0.5 - random.random())
+        values[0] = (0.5 - 0.1*random.random())
         values[1] = 0.0
 
     def value_shape(self):
@@ -34,13 +34,11 @@ dump_xdmf(xyz)
 
 W = geo_map.mixed_space((geo_map.ref_el,
                          geo_map.ref_el,
-                         geo_map.ref_el,
-                         geo_map.ref_el,
                          geo_map.ref_el))
 
 # Define trial and test functions
 du = df.TrialFunction(W)
-xi, etatt, etats, etast, etass = df.TestFunctions(W)
+xi, eta, etahat = df.TestFunctions(W)
 
 # Define functions
 u = df.TrialFunction(W)
@@ -48,10 +46,10 @@ u_ = df.Function(W, name="u_")  # current solution
 u_1 = df.Function(W, name="u_1")  # solution from previous converged step
 
 # Split mixed functions
-dpsi, dmu_tt, dmu_ts, dmu_st, dmu_ss = df.split(du)
-psi,  mu_tt, mu_ts, mu_st, mu_ss = df.split(u)
-psi_, mu_tt_, mu_ts_, mu_st_, mu_ss_ = df.split(u_)
-psi_1, mu_tt_1, mu_ts_1, mu_st_1, mu_ss_1 = df.split(u_1)
+dpsi, dnu, dnuhat = df.split(du)
+psi,  nu, nuhat = df.split(u)
+psi_, nu_, nuhat_ = df.split(u_)
+psi_1, nu_1, nuhat_1 = df.split(u_1)
 
 # Create intial conditions and interpolate
 u_init = InitialConditions(degree=1)
@@ -64,24 +62,14 @@ def w_lin(c_, c_1, vtau):
 
 
 # Brazovskii-Swift (non-conserved PFC with dc/dt = -delta F/delta c)
-# Semi-covariantized version (zero thickness) (i.e. the inner products now involve the metric a0)
-Mu = (mu_tt, mu_ts, mu_st, mu_ss)
-mu = geo_map.trace(Mu, index_pos="ll")
-Mu_ = (mu_tt_, mu_ts_, mu_st_, mu_ss_)
-mu_ = geo_map.trace(Mu_, index_pos="ll")
-
-Eta = (etatt, etats, etast, etass)
-eta_times_mu = geo_map.inner(Eta, Mu, index_pos="uull")
-Deta = geo_map.grad_matrix(Eta, grad_index_pos="l", matrix_index_pos="uu")
-v = geo_map.trace_tensor(Deta, index_pos="uul", sum_index=1)  # => upper vector
-
 F_psi_L = geo_map.form(
     1/dt * (psi - psi_1) * xi
-    - 4 * ell**2 * mu*xi
-    + 4 * ell**4 * geo_map.dotgrad(mu, xi))
+    - 4 * ell**2 * nu*xi
+    + 4 * ell**4 * geo_map.dotgrad(nu, xi))
 F_psi_NL = geo_map.form(w_lin(psi, psi_1, tau) * xi)
-F_mu = geo_map.form(eta_times_mu + geo_map.dot(v, geo_map.grad(psi)))
-F = F_psi_L + F_psi_NL + F_mu
+F_nu = geo_map.form(nu*eta + geo_map.dotgrad(psi, eta))
+F_nuhat = geo_map.form(nuhat*etahat + geo_map.dotcurvgrad(psi, etahat))
+F = F_psi_L + F_psi_NL + F_nu + F_nuhat
 
 a = df.lhs(F)
 L = df.rhs(F)
