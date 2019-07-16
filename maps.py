@@ -176,6 +176,9 @@ class GeoMap:
         self.Kts = self.get_function("Kts")
         self.Kst = self.get_function("Kst")
         self.Kss = self.get_function("Kss")
+
+        self.K = self.get_function("K")
+        self.H = self.get_function("H")
         
         self.Gs_ss = self.get_function("Gs_ss")
         self.Gs_st = self.get_function("Gs_st")
@@ -278,7 +281,7 @@ class GeoMap:
         att, ats, ast, ass = A
         b_tt, b_ts, b_st, b_ss = B
         return ass*b_ss + ast*b_st + ats*b_ts + att*b_tt
-            
+
     def inner(self, A, B, index_pos="uull"):
         if index_pos in ["uull", "lluu"]:
             return self._inner(A, B)
@@ -295,7 +298,7 @@ class GeoMap:
         mt, ms = m
         n_t, n_s = n_
         return ms*n_s + mt*n_t
-    
+
     def dot(self, m, n, index_pos="ul"):
         if index_pos in ["ul", "lu"]:
             return self._dot(m, n)
@@ -466,11 +469,11 @@ class CylinderMap(GeoMap):
 
 
 class GaussianBumpMap(GeoMap):
-    def __init__(self, Lx, Ly, H, sigma):
+    def __init__(self, Lx, Ly, h, sigma):
         t, s = sp.symbols('t s')
         x = t
         y = s
-        z = H * sp.exp(-((t-Lx/2)**2+(s-Ly/2)**2)/(2*sigma**2))
+        z = h * sp.exp(-((t-Lx/2)**2+(s-Ly/2)**2)/(2*sigma**2))
 
         t_min = 0.
         t_max = Lx

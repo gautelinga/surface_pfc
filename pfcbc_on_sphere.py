@@ -3,6 +3,7 @@ from maps import SphereMap, EllipsoidMap
 from common.io import dump_xdmf, Timeseries
 import random
 import numpy as np
+import sympy as sp
 
 
 # Class representing the intial conditions
@@ -20,11 +21,13 @@ class InitialConditions(df.UserExpression):
         # return (2,)
 
 
-R = 30.0
-res = 100
-dt = 0.1
+R = 30.0  # Radius
+res = 100  # Resolution
+dt = 0.5
 tau = 0.2
 ell = 1.0  # 10.0/(2*np.pi*np.sqrt(2))
+h = df.Constant(0.1)
+M = df.Constant(1.0)  # Mobility
 
 geo_map = EllipsoidMap(0.75*R, 0.75*R, 1*R)
 geo_map.initialize_ref_space(res)
@@ -63,21 +66,35 @@ u_init = InitialConditions(degree=1)
 u_1.interpolate(u_init)
 u_.assign(u_1)
 
+Psi, Tau = sp.symbols('psi tau')
+w = Tau/2*Psi**2 + Psi**4/4
+dw = sp.diff(w, Psi)
+ddw = sp.diff(dw, Psi)
+f_dw = sp.lambdify([Psi, Tau], dw)
+f_ddw = sp.lambdify([Psi, Tau], ddw)
 
+
+# def w_lin(c_, c_1, vtau):
+#     return vtau*c_ + c_1**3 + 3*c_1**2*(c_-c_1)
 def w_lin(c_, c_1, vtau):
-    return vtau*c_ + c_1**3 + 3*c_1**2*(c_-c_1)
+    return f_dw(c_1, vtau) + f_ddw(c_1, vtau)*(c_-c_1)
 
 
 # Brazovskii-Swift (non-conserved PFC with dc/dt = -delta F/delta c)
-F_psi_L = geo_map.form(
-    1/dt * (psi - psi_1) * xi
-    + 4 * ell**2 * nu*xi
-    - 4 * ell**4 * geo_map.dotgrad(nu, xi))
-F_psi_NL = geo_map.form(w_lin(psi, psi_1, tau) * xi)
+m_NL = F_psi_NL = (1 + geo_map.K * h**2/12) * w_lin(psi, psi_1, tau) * xi
+m_0 = 4 * ell**2 * nu*xi - 4 * ell**4 * geo_map.dotgrad(nu, xi)
+m_2 = (2 * (geo_map.H * nuhat - geo_map.K*nu)*eta
+       - 4 * geo_map.dotcurvgrad(nuhat, eta)
+       + 5 * geo_map.K * geo_map.dotgrad(nu, eta)
+       - 2 * geo_map.H * (geo_map.dotgrad(nuhat, eta)
+                          + geo_map.dotcurvgrad(nu, eta)))/3
+m = m_NL + m_0 + h**2 * m_2
+
+F_psi = geo_map.form(1/dt * (psi - psi_1) * xi + M*m)
 F_nu = geo_map.form(nu*eta + geo_map.dotgrad(psi, eta))
 F_nuhat = geo_map.form(nuhat*etahat + geo_map.dotcurvgrad(psi, etahat))
-#F_nuhat = geo_map.form((nu-nuhat)*etahat)
-F = F_psi_L + F_psi_NL + F_nu + F_nuhat
+
+F = F_psi + F_nu + F_nuhat
 
 a = df.lhs(F)
 L = df.rhs(F)

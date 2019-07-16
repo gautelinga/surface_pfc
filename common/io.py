@@ -28,3 +28,7 @@ class Timeseries:
 
     def close(self):
         self.xdmfff.close()
+
+
+def export_xdmf():
+    pass
