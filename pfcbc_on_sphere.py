@@ -12,11 +12,12 @@ class InitialConditions(df.UserExpression):
         super().__init__(**kwargs)
 
     def eval(self, values, x):
-        values[0] = (0.5 - 0.1*random.random())
+        values[0] = (0.5 - random.random())
         values[1] = 0.0
 
     def value_shape(self):
-        return (5,)
+        return (3,)
+        # return (2,)
 
 
 R = 30.0
@@ -35,10 +36,12 @@ dump_xdmf(xyz)
 W = geo_map.mixed_space((geo_map.ref_el,
                          geo_map.ref_el,
                          geo_map.ref_el))
+# W = geo_map.mixed_space((geo_map.ref_el, geo_map.ref_el))
 
 # Define trial and test functions
 du = df.TrialFunction(W)
 xi, eta, etahat = df.TestFunctions(W)
+# xi, eta = df.TestFunctions(W)
 
 # Define functions
 u = df.TrialFunction(W)
@@ -50,6 +53,10 @@ dpsi, dnu, dnuhat = df.split(du)
 psi,  nu, nuhat = df.split(u)
 psi_, nu_, nuhat_ = df.split(u_)
 psi_1, nu_1, nuhat_1 = df.split(u_1)
+# dpsi, dnu = df.split(du)
+# psi,  nu = df.split(u)
+# psi_, nu_ = df.split(u_)
+# psi_1, nu_1 = df.split(u_1)
 
 # Create intial conditions and interpolate
 u_init = InitialConditions(degree=1)
@@ -64,11 +71,12 @@ def w_lin(c_, c_1, vtau):
 # Brazovskii-Swift (non-conserved PFC with dc/dt = -delta F/delta c)
 F_psi_L = geo_map.form(
     1/dt * (psi - psi_1) * xi
-    - 4 * ell**2 * nu*xi
-    + 4 * ell**4 * geo_map.dotgrad(nu, xi))
+    + 4 * ell**2 * nu*xi
+    - 4 * ell**4 * geo_map.dotgrad(nu, xi))
 F_psi_NL = geo_map.form(w_lin(psi, psi_1, tau) * xi)
 F_nu = geo_map.form(nu*eta + geo_map.dotgrad(psi, eta))
 F_nuhat = geo_map.form(nuhat*etahat + geo_map.dotcurvgrad(psi, etahat))
+#F_nuhat = geo_map.form((nu-nuhat)*etahat)
 F = F_psi_L + F_psi_NL + F_nu + F_nuhat
 
 a = df.lhs(F)
@@ -86,16 +94,19 @@ df.parameters["form_compiler"]["cpp_optimize"] = True
 
 # Output file
 psifile = Timeseries("psi", name="psi")
-mufile = Timeseries("mu", name="mu", space=geo_map.S_ref)
+nufile = Timeseries("nu", name="nu")
+nuhatfile = Timeseries("nuhat", name="nuhat")
 
 # Step in time
 t = 0.0
 it = 0
 T = 100.0
 
-psi_q = u_.split()[0]
+psi_q, nu_q, nuhat_q = u_.split()
+# psi_q, nu_q = u_.split()
 psifile.write(psi_q, it)
-mufile.write(mu_, it)
+nufile.write(nu_q, it)
+nuhatfile.write(nuhat_q, it)
 
 while t < T:
     it += 1
@@ -105,6 +116,8 @@ while t < T:
 
     u_1.assign(u_)
     if it % 1 == 0:
-        psi_q = u_.split()[0]
+        psi_q, nu_q, nuhat_q = u_.split()
+        # psi_q, nu_q = u_.split()
         psifile.write(psi_q, it)
-        mufile.write(mu_, it)
+        nufile.write(nu_q, it)
+        nuhatfile.write(nuhat_q, it)

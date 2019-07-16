@@ -92,17 +92,28 @@ class GeoMap:
         self.map["K_st"] = sp.simplify(self.map["nx"]*self.map["xst"]
                                        + self.map["ny"]*self.map["yst"]
                                        + self.map["nz"]*self.map["zst"])
+        self.map["K_ts"] = self.map["K_st"]
         self.map["K_tt"] = sp.simplify(self.map["nx"]*self.map["xtt"]
                                        + self.map["ny"]*self.map["ytt"]
                                        + self.map["nz"]*self.map["ztt"])
+
         self.map["Ks_s"] = sp.simplify(self.map["gss"]*self.map["K_ss"]
-                                       + self.map["gst"]*self.map["K_st"])
+                                       + self.map["gst"]*self.map["K_ts"])
         self.map["Ks_t"] = sp.simplify(self.map["gss"]*self.map["K_st"]
                                        + self.map["gst"]*self.map["K_tt"])
         self.map["Kt_s"] = sp.simplify(self.map["gst"]*self.map["K_ss"]
-                                       + self.map["gtt"]*self.map["K_st"])
+                                       + self.map["gtt"]*self.map["K_ts"])
         self.map["Kt_t"] = sp.simplify(self.map["gst"]*self.map["K_st"]
                                        + self.map["gtt"]*self.map["K_tt"])
+
+        self.map["Kss"] = sp.simplify(self.map["gss"]*self.map["Ks_s"]
+                                      + self.map["gst"]*self.map["Ks_t"])
+        self.map["Kst"] = sp.simplify(self.map["gst"]*self.map["Ks_s"]
+                                      + self.map["gtt"]*self.map["Ks_t"])
+        self.map["Kts"] = sp.simplify(self.map["gss"]*self.map["Kt_s"]
+                                      + self.map["gst"]*self.map["Kt_t"])
+        self.map["Ktt"] = sp.simplify(self.map["gst"]*self.map["Kt_s"]
+                                      + self.map["gtt"]*self.map["Kt_t"])
 
         # Mean and Gaussian curvature
         self.map["H"] = sp.simplify((self.map["Ks_s"] + self.map["Kt_t"])/2)
@@ -161,6 +172,11 @@ class GeoMap:
         self.gss = self.get_function("gss")
         self.sqrt_g = self.get_function("sqrt_g")
 
+        self.Ktt = self.get_function("Ktt")
+        self.Kts = self.get_function("Kts")
+        self.Kst = self.get_function("Kst")
+        self.Kss = self.get_function("Kss")
+        
         self.Gs_ss = self.get_function("Gs_ss")
         self.Gs_st = self.get_function("Gs_st")
         self.Gs_tt = self.get_function("Gs_tt")
@@ -173,6 +189,12 @@ class GeoMap:
                 + self.gss*u.dx(1)*v.dx(1)
                 + self.gst*u.dx(0)*v.dx(1)
                 + self.gst*u.dx(1)*v.dx(0))
+
+    def dotcurvgrad(self, u, v):
+        return (self.Ktt*u.dx(0)*v.dx(0)
+                + self.Kts*u.dx(0)*v.dx(1)
+                + self.Kst*u.dx(1)*v.dx(0)
+                + self.Kss*u.dx(1)*v.dx(1))
 
     def form(self, integrand):
         return integrand*self.sqrt_g*self.dS_ref

@@ -1,6 +1,6 @@
 import dolfin as df
 from maps import SphereMap
-from io import dump_xdmf, Timeseries
+from common.io import dump_xdmf, Timeseries
 
 
 R = 1.0
