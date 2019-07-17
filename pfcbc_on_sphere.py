@@ -33,18 +33,14 @@ geo_map = EllipsoidMap(0.75*R, 0.75*R, 1*R)
 geo_map.initialize_ref_space(res)
 # ref_mesh = geo_map.ref_mesh
 geo_map.initialize_metric()
-xyz = geo_map.coords()
-dump_xdmf(xyz)
 
 W = geo_map.mixed_space((geo_map.ref_el,
                          geo_map.ref_el,
                          geo_map.ref_el))
-# W = geo_map.mixed_space((geo_map.ref_el, geo_map.ref_el))
 
 # Define trial and test functions
 du = df.TrialFunction(W)
 xi, eta, etahat = df.TestFunctions(W)
-# xi, eta = df.TestFunctions(W)
 
 # Define functions
 u = df.TrialFunction(W)
@@ -56,10 +52,6 @@ dpsi, dnu, dnuhat = df.split(du)
 psi,  nu, nuhat = df.split(u)
 psi_, nu_, nuhat_ = df.split(u_)
 psi_1, nu_1, nuhat_1 = df.split(u_1)
-# dpsi, dnu = df.split(du)
-# psi,  nu = df.split(u)
-# psi_, nu_ = df.split(u_)
-# psi_1, nu_1 = df.split(u_1)
 
 # Create intial conditions and interpolate
 u_init = InitialConditions(degree=1)
@@ -74,8 +66,6 @@ f_dw = sp.lambdify([Psi, Tau], dw)
 f_ddw = sp.lambdify([Psi, Tau], ddw)
 
 
-# def w_lin(c_, c_1, vtau):
-#     return vtau*c_ + c_1**3 + 3*c_1**2*(c_-c_1)
 def w_lin(c_, c_1, vtau):
     return f_dw(c_1, vtau) + f_ddw(c_1, vtau)*(c_-c_1)
 
@@ -110,20 +100,14 @@ df.parameters["form_compiler"]["optimize"] = True
 df.parameters["form_compiler"]["cpp_optimize"] = True
 
 # Output file
-psifile = Timeseries("psi", name="psi")
-nufile = Timeseries("nu", name="nu")
-nuhatfile = Timeseries("nuhat", name="nuhat")
+ts = Timeseries("results_pfcbc", u_, ("psi", "nu", "nuhat"), geo_map, 0)
 
 # Step in time
 t = 0.0
 it = 0
 T = 100.0
 
-psi_q, nu_q, nuhat_q = u_.split()
-# psi_q, nu_q = u_.split()
-psifile.write(psi_q, it)
-nufile.write(nu_q, it)
-nuhatfile.write(nuhat_q, it)
+ts.dump(it)
 
 while t < T:
     it += 1
@@ -133,8 +117,4 @@ while t < T:
 
     u_1.assign(u_)
     if it % 1 == 0:
-        psi_q, nu_q, nuhat_q = u_.split()
-        # psi_q, nu_q = u_.split()
-        psifile.write(psi_q, it)
-        nufile.write(nu_q, it)
-        nuhatfile.write(nuhat_q, it)
+        ts.dump(it)
