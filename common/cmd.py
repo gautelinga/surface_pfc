@@ -103,7 +103,7 @@ def parse_command_line():
 
 
 def info_style(message, check=True, style=NORMAL):
-    if MPI_rank == 0 and check:
+    if mpi_is_root() and check:
         print(style.format(s=message))
 
 
@@ -136,7 +136,7 @@ def info_on_red(message, check=True):
 
 
 def info_split_style(msg_1, msg_2, style_1=BLUE, style_2=NORMAL, check=True):
-    if MPI_rank == 0 and check:
+    if mpi_is_root() and check:
         print(style_1.format(s=msg_1) + " " + style_2.format(s=msg_2))
 
 

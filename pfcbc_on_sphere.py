@@ -29,7 +29,7 @@ ell = 1.0  # 10.0/(2*np.pi*np.sqrt(2))
 h = df.Constant(0.1)
 M = df.Constant(1.0)  # Mobility
 
-geo_map = EllipsoidMap(0.75*R, 0.75*R, 1*R)
+geo_map = EllipsoidMap(2*0.75*R, 2*0.75*R, 0.25*R)
 geo_map.initialize_ref_space(res)
 # ref_mesh = geo_map.ref_mesh
 geo_map.initialize_metric()

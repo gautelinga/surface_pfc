@@ -412,6 +412,9 @@ class EllipsoidMap(GeoMap):
         x = Rx * sp.cos(t) * sp.sin(s)
         y = Ry * sp.sin(t) * sp.sin(s)
         z = Rz * sp.cos(s)
+        self.Rx = Rx
+        self.Ry = Ry
+        self.Rz = Rz
 
         t_min = 0.
         s_min = 0.
@@ -426,11 +429,16 @@ class EllipsoidMap(GeoMap):
 
     def compute_mesh(self, res, eps=1e-2):
         self.eps = eps
-        N = int((self.t_max-self.t_min)/(self.s_max-self.s_min))
+        ratio = np.sqrt(self.Rx*self.Ry)/self.Rz * 2 / np.pi
+        Ns = int(res/np.sqrt(ratio))
+        Nt = int((self.t_max-self.t_min)/(self.s_max-self.s_min)*np.sqrt(ratio)*res)
         ref_mesh = df.RectangleMesh.create(
             [df.Point(self.t_min, self.s_min + eps),
              df.Point(self.t_max, self.s_max - eps)],
-            [N*res, res], df.cpp.mesh.CellType.Type.triangle)
+            [Nt, Ns], df.cpp.mesh.CellType.Type.triangle)
+        x = ref_mesh.coordinates()[:]
+        beta = 0.0
+        x[:, 1] = beta*x[:, 1] + (1.0-beta)*np.pi*np.sin(x[:, 1]/2)**2
         self.ref_mesh = ref_mesh
 
     def compute_pbc(self):
