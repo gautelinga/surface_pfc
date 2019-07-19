@@ -26,14 +26,18 @@ def Finv(s, kappa):
 
 
 if __name__ == "__main__":
-    s = np.linspace(0., 2*np.pi, 50)
-    
-    for kappa in [0.01, 0.1, 0.5, .9, 1/0.9, 2.0, 10., 100.]:
+    s = np.linspace(0., 0.25*2*np.pi, 50)
+
+    kappas = 10**np.linspace(-2.0, 2., 20)
+    for kappa in kappas:
         #Fhat = (2*np.pi*F(phi, kappa)/F_loc(2*np.pi, kappa) - phi)*kappa
         #print(Fhat)
         beta = s/(2*np.pi)
         g = Finv(F_loc(0, kappa)*(1.-beta) + F_loc(2*np.pi, kappa)*beta, kappa)
         gres = g - s
+        
         plt.plot(s, gres)
+
+        print(abs(gres).max())
 
     plt.show()
