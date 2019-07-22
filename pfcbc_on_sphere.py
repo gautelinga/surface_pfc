@@ -22,17 +22,15 @@ class InitialConditions(df.UserExpression):
 
 
 R = 30.0  # Radius
-res = 100  # Resolution
+res = 200  # Resolution
 dt = 0.5
 tau = 0.2
 ell = 1.0  # 10.0/(2*np.pi*np.sqrt(2))
-h = df.Constant(0.1)
+h = df.Constant(1.1)
 M = df.Constant(1.0)  # Mobility
 
-geo_map = EllipsoidMap(2*0.75*R, 2*0.75*R, 0.25*R)
-geo_map.initialize_ref_space(res)
-# ref_mesh = geo_map.ref_mesh
-geo_map.initialize_metric()
+geo_map = EllipsoidMap(0.75*R, 0.75*R, 1.25*R)
+geo_map.initialize(res)
 
 W = geo_map.mixed_space((geo_map.ref_el,
                          geo_map.ref_el,

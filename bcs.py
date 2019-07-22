@@ -10,7 +10,7 @@ class PBC(df.SubDomain):
         df.SubDomain.__init__(self)
 
 
-class SpherePBC(PBC):
+class EllipsoidPBC(PBC):
     def inside(self, x, on_boundary):
         return bool(df.near(x[0], self.t_min) and on_boundary)
 

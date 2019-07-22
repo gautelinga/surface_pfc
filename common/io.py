@@ -6,6 +6,8 @@ from .cmd import mpi_is_root, mpi_barrier, mpi_comm, info_red
 def dump_xdmf(f, folder=""):
     filename = os.path.join(folder, "{}.xdmf".format(f.name()))
     with df.XDMFFile(mpi_comm(), filename) as xdmff:
+        xdmff.parameters["rewrite_function_mesh"] = False
+        xdmff.parameters["flush_output"] = True
         xdmff.write(f)
 
 
@@ -57,6 +59,7 @@ class Timeseries:
         self.folder = create_directories(results_folder)
         geofolder = os.path.join(self.folder, "Geometry")
         dump_xdmf(geo_map.coords(), folder=geofolder)
+        dump_xdmf(geo_map.normal(), folder=geofolder)
 
         self.files = dict()
         self.filenames = dict()

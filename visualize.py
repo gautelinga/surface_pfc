@@ -16,8 +16,8 @@ grid_ref_begin = """
       <Grid>"""
 
 mesh_1st = """
-        <Topology NumberOfElements="{num_elem}" TopologyType="Triangle" NodesPerElement="3">
-          <DataItem Dimensions="{num_elem} 3" NumberType="UInt" Format="HDF">{topology_filename}:{topology_loc}</DataItem>
+        <Topology NumberOfElements="{num_elem}" TopologyType="{topology_type}" NodesPerElement="{nodes_per_element}">
+          <DataItem Dimensions="{num_elem} {nodes_per_element}" NumberType="UInt" Format="HDF">{topology_filename}:{topology_loc}</DataItem>
         </Topology>
         <Geometry GeometryType="XYZ">
           <DataItem Dimensions="{num_vert} 3" Format="HDF">{xyz_filename}:{xyz_loc}</DataItem>
@@ -80,6 +80,8 @@ def parse_xyz_xdmf(xml_file):
     geometry_address = grid["Geometry"]["DataItem"]["#text"].split(":")
     topology_address = grid["Topology"]["DataItem"]["#text"].split(":")
     xyz_address = grid["Attribute"]["DataItem"]["#text"].split(":")
+    topology_type = grid["Topology"]["@TopologyType"]
+    nodes_per_element = grid["Topology"]["@NodesPerElement"]
     topology_shape = tuple(
         [int(a) for a in
          grid["Topology"]["DataItem"]["@Dimensions"].split(" ")])
@@ -91,38 +93,53 @@ def parse_xyz_xdmf(xml_file):
          grid["Attribute"]["DataItem"]["@Dimensions"].split(" ")])
 
     return (geometry_address, topology_address, xyz_address,
-            geometry_shape, topology_shape, xyz_shape)
+            geometry_shape, topology_shape, xyz_shape,
+            topology_type, nodes_per_element)
 
 
 def parse_timeseries_xdmf(xml_file):
     tree = etree.parse(xml_file)
     root = tree.getroot()
     prop = etree_to_dict(root)
-    grid = prop["Xdmf"]["Domain"]["Grid"]["Grid"]
-
+    grid = prop["Xdmf"]["Domain"]["Grid"]
     dsets = dict()
+    folder = os.path.dirname(xml_file).split("/")[-1]
+    if "Grid" not in grid:
+        time = 0
+        name = grid["Attribute"]["@Name"]
+        address = grid["Attribute"]["DataItem"]["#text"].split(":")
+        address = (folder, address[0], address[1])
+        field_type = grid["Attribute"]["@AttributeType"]
+        dsets[name] = [(time, address, field_type)]
+        return dsets
+
+    grid = grid["Grid"]
     for step in grid:
         name = step["Attribute"]["@Name"]
         if name not in dsets:
             dsets[name] = []
         time = int(step["Time"]["@Value"])
         address = step["Attribute"]["DataItem"]["#text"].split(":")
+        address = (folder, address[0], address[1])
         field_type = step["Attribute"]["@AttributeType"]
         dsets[name].append((time, address, field_type))
 
     return dsets
 
 
-def write_combined_xdmf(fields, xyz_filename):
+def write_combined_xdmf(field_filenames, xyz_filename):
     is_1st = True
 
     (geometry_address, topology_address, xyz_address,
-     geometry_shape, topology_shape, xyz_shape) = parse_xyz_xdmf(xyz_filename)
+     geometry_shape, topology_shape, xyz_shape,
+     topology_type, nodes_per_element) = parse_xyz_xdmf(xyz_filename)
 
     is_vector = dict()
     dsets = dict()
-    for field, filename in fields.items():
+    for filename in field_filenames:
         dsets.update(parse_timeseries_xdmf(filename))
+
+    for field in dsets.keys():
         is_vector[field] = dsets[field][0][2] == "Vector"
 
     keys = dict(
@@ -132,16 +149,21 @@ def write_combined_xdmf(fields, xyz_filename):
         xyz_filename=os.path.join("Geometry", xyz_address[0]),
         xyz_loc=xyz_address[1],
         topology_filename=os.path.join("Geometry", topology_address[0]),
-        topology_loc=topology_address[1]
+        topology_loc=topology_address[1],
+        topology_type=topology_type,
+        nodes_per_element=nodes_per_element
     )
 
     text = header.format(**keys)
 
-    field_names = list(fields.keys())
-    times = [a[0] for a in dsets[field_names[0]]]
+    field_names = list(dsets.keys())
+    times = np.array([a[0] for a in dsets[field_names[0]]])
     for field_name in field_names[1:]:
-        times_alt = [a[0] for a in dsets[field_name]]
-        assert(np.all(np.array(times) == np.array(times_alt)))
+        times = np.union1d(np.array([a[0] for a in dsets[field_name]]), times)
+
+    for field_name in field_names:
+        for i, a in enumerate(dsets[field_name]):
+            assert(a[0] == times[i])
 
     for i, time in enumerate(times):
         if is_1st:
@@ -153,21 +175,32 @@ def write_combined_xdmf(fields, xyz_filename):
             text += mesh_ref.format(**keys)
         text += timestamp.format(time=time, **keys)
         for field in field_names:
-            dset = dsets[field][i]
-            field_filename, field_loc = dset[1]
+            if len(dsets[field]) > i:
+                dset = dsets[field][i]
+            else:
+                dset = dsets[field][-1]
+            field_folder, field_filename, field_loc = dset[1]
             if not is_vector[field]:
                 attrib = attrib_scalar
             else:
                 attrib = attrib_vector
 
             text += attrib.format(field=field,
-                                  field_filename=os.path.join("Timeseries", field_filename),
+                                  field_filename=os.path.join(
+                                      field_folder,
+                                      field_filename),
                                   field_loc=field_loc,
                                   **keys)
 
         text += grid_end.format(**keys)
     text += footer
     return text
+
+
+def list_xdmf_files(folder):
+    return [os.path.join(folder, a) for a in sorted(
+        filter(lambda x: x.split(".")[-1] == "xdmf",
+               os.listdir(folder)))]
 
 
 if __name__ == "__main__":
@@ -181,13 +214,16 @@ if __name__ == "__main__":
     tsfolder = os.path.join(folder, "Timeseries")
     geofolder = os.path.join(folder, "Geometry")
 
-    fields = dict(
-        psi=os.path.join(tsfolder, "psi_from_tstep_0.xdmf"),
-        nu=os.path.join(tsfolder, "nu_from_tstep_0.xdmf"),
-        nuhat=os.path.join(tsfolder, "nuhat_from_tstep_0.xdmf")
-    )
+    tsfilenames = list_xdmf_files(tsfolder)
+    geofilenames = list_xdmf_files(geofolder)
+    field_filenames = tsfilenames + geofilenames
     xyz_filename = os.path.join(geofolder, "xyz.xdmf")
 
-    text = write_combined_xdmf(fields, xyz_filename)
+    text = write_combined_xdmf(field_filenames, xyz_filename)
     with open(os.path.join(folder, "visualize.xdmf"), "w") as outfile:
         outfile.write(text)
+
+
+
+
+

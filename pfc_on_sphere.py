@@ -26,11 +26,7 @@ tau = 0.2
 ell = 1.0  # 10.0/(2*np.pi*np.sqrt(2))
 
 geo_map = EllipsoidMap(0.75*R, 0.75*R, 1*R)
-geo_map.initialize_ref_space(res)
-# ref_mesh = geo_map.ref_mesh
-geo_map.initialize_metric()
-xyz = geo_map.coords()
-dump_xdmf(xyz)
+geo_map.initialize(res)
 
 W = geo_map.mixed_space((geo_map.ref_el, geo_map.ref_el))
 
@@ -79,19 +75,14 @@ df.parameters["form_compiler"]["optimize"] = True
 df.parameters["form_compiler"]["cpp_optimize"] = True
 
 # Output file
-cfile = Timeseries("c")
-mufile = Timeseries("mu")
+ts = Timeseries("results_pfc", u_, ("c", "mu"), geo_map, 0)
 
 # Step in time
 t = 0.0
 it = 0
 T = 100.0
 
-c_, mu_ = u_1.split()
-c_.rename("c", "tmp")
-mu_.rename("mu", "tmp")
-cfile.write(c_, it)
-mufile.write(mu_, it)
+ts.dump(it)
 
 while t < T:
     it += 1
@@ -101,8 +92,4 @@ while t < T:
 
     u_1.assign(u_)
     if it % 1 == 0:
-        c_, mu_ = u_.split()
-        c_.rename("c", "tmp")
-        mu_.rename("mu", "tmp")
-        cfile.write(c_, it)
-        mufile.write(mu_, it)
+        ts.dump(it)

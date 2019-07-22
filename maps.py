@@ -1,7 +1,9 @@
 import sympy as sp
 import numpy as np
 import dolfin as df
-from bcs import SpherePBC, CylinderPBC
+from bcs import EllipsoidPBC, CylinderPBC
+from common.mesh_refinement import densified_ellipsoid_mesh
+from common.utilities import NdFunction
 
 
 class GeoMap:
@@ -160,8 +162,17 @@ class GeoMap:
         f = df.Function(self.S_ref)
         f.rename(key, "tmp")
         F = self.eval(key)
-        f.vector().set_local(F)
+        f.vector()[:] = F
         return f
+
+    def initialize(self, res):
+        self.compute_mesh(res)
+        self.compute_pbc()
+        isgood = False
+        while not isgood:
+            self.initialize_ref_space(res)
+            self.initialize_metric()
+            isgood = self.recompute_mesh(res)
 
     def initialize_metric(self):  # , S_ref, t_vals, s_vals):
         self.g_tt = self.get_function("g_tt")
@@ -206,16 +217,16 @@ class GeoMap:
         x = self.get_function("x")
         y = self.get_function("y")
         z = self.get_function("z")
-        xyz = df.project(df.as_vector((x, y, z)), self.S3_ref)
-        xyz.rename("xyz", "tmp")
+        xyz = NdFunction([x, y, z], name="xyz")
+        xyz()
         return xyz
 
     def normal(self):
         nx = self.get_function("nx")
         ny = self.get_function("ny")
         nz = self.get_function("nz")
-        n = df.project(df.as_vector((nx, ny, nz)), self.S3_ref)
-        n.rename("n", "tmp")
+        n = NdFunction([nx, ny, nz], name="n")
+        n()
         return n
 
     def compute_mesh(self, res):
@@ -226,6 +237,9 @@ class GeoMap:
             [N*res, res], df.cpp.mesh.CellType.Type.triangle)
         self.ref_mesh = ref_mesh
 
+    def recompute_mesh(self, res):
+        return True
+
     def compute_pbc(self):
         self.pbc = None
 
@@ -235,20 +249,11 @@ class GeoMap:
                                 constrained_domain=self.pbc)
 
     def initialize_ref_space(self, res):
-        self.compute_mesh(res)
-        self.compute_pbc()
-
         self.dS_ref = df.Measure("dx", domain=self.ref_mesh)
 
         self.ref_el = df.FiniteElement("Lagrange", self.ref_mesh.ufl_cell(), 1)
         self.S_ref = df.FunctionSpace(self.ref_mesh, self.ref_el,
                                       constrained_domain=self.pbc)
-        self.S3_ref = df.FunctionSpace(self.ref_mesh,
-                                       df.MixedElement(
-                                           (self.ref_el,
-                                            self.ref_el,
-                                            self.ref_el)),
-                                       constrained_domain=self.pbc)
 
         T_vals = df.interpolate(df.Expression("x[0]", degree=1),
                                 self.S_ref)
@@ -427,24 +432,40 @@ class EllipsoidMap(GeoMap):
         ts_max = (t_max, s_max)
         GeoMap.__init__(self, xyz, ts, ts_min, ts_max)
 
-    def compute_mesh(self, res, eps=1e-2):
+    def compute_mesh(self, res, eps=1e-3):
         self.eps = eps
-        ratio = np.sqrt(self.Rx*self.Ry)/self.Rz * 2 / np.pi
-        Ns = int(res/np.sqrt(ratio))
-        Nt = int((self.t_max-self.t_min)/(self.s_max-self.s_min)*np.sqrt(ratio)*res)
-        ref_mesh = df.RectangleMesh.create(
-            [df.Point(self.t_min, self.s_min + eps),
-             df.Point(self.t_max, self.s_max - eps)],
-            [Nt, Ns], df.cpp.mesh.CellType.Type.triangle)
-        x = ref_mesh.coordinates()[:]
-        beta = 0.0
-        x[:, 1] = beta*x[:, 1] + (1.0-beta)*np.pi*np.sin(x[:, 1]/2)**2
-        self.ref_mesh = ref_mesh
+        self.ref_mesh = densified_ellipsoid_mesh(
+            4*0.25*res**2, self.Rx, self.Ry, self.Rz, eps=eps)
+
+    def recompute_mesh(self, res):
+        # disable refinement
+        return True
+
+        S_tot = df.assemble(self.form(df.Constant(1.)))
+        deltaS_max = S_tot/res**2
+
+        cell_markers = df.MeshFunction("bool", self.ref_mesh,
+                                       self.ref_mesh.topology().dim())
+        cell_markers.set_all(False)
+        isgood = True
+        
+        for cell in df.cells(self.ref_mesh):
+            deltaS_ref = cell.volume()
+            sqrt_g_loc = self.sqrt_g(cell.midpoint())
+            deltaS = sqrt_g_loc*deltaS_ref
+            if deltaS >= deltaS_max:
+                isgood = False
+                cell_markers[cell] = True
+
+        if not isgood:
+            self.ref_mesh = df.refine(self.ref_mesh, cell_markers)
+
+        return isgood
 
     def compute_pbc(self):
         ts_min = (self.t_min, self.s_min)
         ts_max = (self.t_max, self.s_max)
-        self.pbc = SpherePBC(ts_min, ts_max)
+        self.pbc = EllipsoidPBC(ts_min, ts_max)
 
 
 class SphereMap(EllipsoidMap):
