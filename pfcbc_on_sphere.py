@@ -13,7 +13,7 @@ class InitialConditions(df.UserExpression):
         super().__init__(**kwargs)
 
     def eval(self, values, x):
-        values[0] = (0.5 - random.random())
+        values[0] = (0.0 - 0.00001*random.random())
         values[1] = 0.0
 
     def value_shape(self):
@@ -91,14 +91,15 @@ L = df.rhs(F)
 problem = df.LinearVariationalProblem(a, L, u_)
 solver = df.LinearVariationalSolver(problem)
 
-# solver.parameters["linear_solver"] = "gmres"
-# solver.parameters["preconditioner"] = "jacobi"
+#solver.parameters["linear_solver"] = "gmres"
+#solver.parameters["preconditioner"] = "jacobi"
 
 df.parameters["form_compiler"]["optimize"] = True
 df.parameters["form_compiler"]["cpp_optimize"] = True
 
 # Output file
 ts = Timeseries("results_pfcbc", u_, ("psi", "nu", "nuhat"), geo_map, 0)
+ts.add_scalar_field(psi_**2, "psi_squared")
 
 # Step in time
 t = 0.0

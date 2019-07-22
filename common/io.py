@@ -47,6 +47,7 @@ def create_directories(results_folder):
 class Timeseries:
     def __init__(self, results_folder, u_, field_names, geo_map, tstep0):
         self.u_ = u_  # Pointer
+        self.tstep0 = tstep0
         num_sub_el = u_.function_space().ufl_element().num_sub_elements()
         self.fields = field_names
         if num_sub_el > 0:
@@ -62,21 +63,24 @@ class Timeseries:
         dump_xdmf(geo_map.normal(), folder=geofolder)
 
         self.files = dict()
-        self.filenames = dict()
         for field in self.fields:
             filename = os.path.join(self.folder, "Timeseries",
-                                    "{}_from_tstep_{}".format(field, tstep0))
-            self.filenames[field] = "{}.h5".format(filename)
-            self.files[field] = df.XDMFFile(mpi_comm(),
-                                            "{}.xdmf".format(filename))
-            self.files[field].parameters["rewrite_function_mesh"] = False
-            self.files[field].parameters["flush_output"] = True
+                                    "{}_from_tstep_{}".format(field,
+                                                              self.tstep0))
+            self.files[field] = self._create_file(filename)
+
+        self.extra_fields = dict()
 
     def dump(self, tstep):
         q_ = self._unpack()
         for field, qi_ in zip(self.fields, q_):
             qi_.rename(field, "tmp")
             self.files[field].write(qi_, tstep)
+
+        for field, ufl_expression in self.extra_fields.items():
+            q_tmp = df.project(ufl_expression, q_[0].function_space().collapse())
+            q_tmp.rename(field, "tmp")
+            self.files[field].write(q_tmp, tstep)
 
     def _unpack(self):
         num_fields = len(self.fields)
@@ -85,6 +89,18 @@ class Timeseries:
         else:
             return self.u_.split()
 
+    def _create_file(self, filename):
+        f = df.XDMFFile(mpi_comm(), "{}.xdmf".format(filename))
+        f.parameters["rewrite_function_mesh"] = False
+        f.parameters["flush_output"] = True
+        return f
+        
     def close(self):
-        for field in self.fields:
+        for field in self.files.keys():
             self.files[field].close()
+
+    def add_scalar_field(self, ufl_expression, field_name):
+        filename = os.path.join(self.folder, "Timeseries",
+                                "{}_from_tstep_{}".format(field_name, self.tstep0))
+        self.extra_fields[field_name] = ufl_expression
+        self.files[field_name] = self._create_file(filename)
