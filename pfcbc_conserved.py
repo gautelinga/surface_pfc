@@ -16,27 +16,24 @@ class InitialConditions(df.UserExpression):
         values[1] = 0.0
 
     def value_shape(self):
-        return (3,)
+        return (4,)
 
 
 R = 30.0  # Radius
-res = 200  # Resolution
+res = 140  # Resolution
 dt = 0.5
 tau = 0.2
-ell = 1.0  # 10.0/(2*np.pi*np.sqrt(2))
 h = df.Constant(1.1)
 M = df.Constant(1.0)  # Mobility
 
 geo_map = EllipsoidMap(0.75*R, 0.75*R, 1.25*R)
 geo_map.initialize(res)
 
-W = geo_map.mixed_space((geo_map.ref_el,
-                         geo_map.ref_el,
-                         geo_map.ref_el))
+W = geo_map.mixed_space((geo_map.ref_el,)*4)
 
 # Define trial and test functions
 du = df.TrialFunction(W)
-xi, eta, etahat = df.TestFunctions(W)
+chi, xi,  eta, etahat = df.TestFunctions(W)
 
 # Define functions
 u = df.TrialFunction(W)
@@ -44,10 +41,10 @@ u_ = df.Function(W, name="u_")  # current solution
 u_1 = df.Function(W, name="u_1")  # solution from previous converged step
 
 # Split mixed functions
-dpsi, dnu, dnuhat = df.split(du)
-psi,  nu, nuhat = df.split(u)
-psi_, nu_, nuhat_ = df.split(u_)
-psi_1, nu_1, nuhat_1 = df.split(u_1)
+dpsi, dmu, dnu, dnuhat = df.split(du)
+psi,  mu, nu, nuhat = df.split(u)
+psi_, mu_, nu_, nuhat_ = df.split(u_)
+psi_1, mu_1, nu_1, nuhat_1 = df.split(u_1)
 
 # Create intial conditions and interpolate
 u_init = InitialConditions(degree=1)
@@ -69,7 +66,7 @@ def w_lin(c_, c_1, vtau):
 
 # Brazovskii-Swift (non-conserved PFC with dc/dt = -delta F/delta c)
 m_NL = F_psi_NL = (1 + geo_map.K * h**2/12) * w_lin(psi, psi_1, tau) * xi
-m_0 = 4 * ell**2 * nu*xi - 4 * ell**4 * geo_map.dotgrad(nu, xi)
+m_0 = 4 * nu * xi - 4 * geo_map.dotgrad(nu, xi)
 m_2 = (2 * (geo_map.H * nuhat - geo_map.K*nu)*eta
        - 4 * geo_map.dotcurvgrad(nuhat, eta)
        + 5 * geo_map.K * geo_map.dotgrad(nu, eta)
@@ -77,11 +74,12 @@ m_2 = (2 * (geo_map.H * nuhat - geo_map.K*nu)*eta
                           + geo_map.dotcurvgrad(nu, eta)))/3
 m = m_NL + m_0 + h**2 * m_2
 
-F_psi = geo_map.form(1/dt * (psi - psi_1) * xi + M*m)
+F_psi = geo_map.form(1/dt * (psi - psi_1) * chi + M*geo_map.dotgrad(mu, chi))
+F_mu = geo_map.form(mu*xi - m)
 F_nu = geo_map.form(nu*eta + geo_map.dotgrad(psi, eta))
 F_nuhat = geo_map.form(nuhat*etahat + geo_map.dotcurvgrad(psi, etahat))
 
-F = F_psi + F_nu + F_nuhat
+F = F_psi + F_mu + F_nu + F_nuhat
 
 a = df.lhs(F)
 L = df.rhs(F)
@@ -97,14 +95,16 @@ df.parameters["form_compiler"]["optimize"] = True
 df.parameters["form_compiler"]["cpp_optimize"] = True
 
 # Output file
-ts = Timeseries("results_pfcbc", u_, ("psi", "nu", "nuhat"), geo_map, 0)
+ts = Timeseries("results_pfcbc_conserved", u_,
+                ("psi", "mu", "nu", "nuhat"), geo_map, 0)
 E_0 = (2*nu_**2 - 2*geo_map.dotgrad(psi_, psi_) + f_w(psi_, tau))
 ts.add_scalar_field(E_0, "E_0")
+ts.add_scalar_field(df.sqrt(geo_map.dotgrad(mu_, mu_)), "abs_grad_mu")
 
 # Step in time
 t = 0.0
 it = 0
-T = 100.0
+T = 10*100.0
 
 ts.dump(it)
 

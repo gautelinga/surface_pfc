@@ -77,10 +77,12 @@ class Timeseries:
             qi_.rename(field, "tmp")
             self.files[field].write(qi_, tstep)
 
-        for field, ufl_expression in self.extra_fields.items():
-            q_tmp = df.project(ufl_expression, q_[0].function_space().collapse())
-            q_tmp.rename(field, "tmp")
-            self.files[field].write(q_tmp, tstep)
+        if len(self.extra_fields) > 0:
+            S = q_[0].function_space().collapse()
+            for field, ufl_expression in self.extra_fields.items():
+                q_tmp = df.project(ufl_expression, S)
+                q_tmp.rename(field, "tmp")
+                self.files[field].write(q_tmp, tstep)
 
     def _unpack(self):
         num_fields = len(self.fields)
@@ -94,13 +96,14 @@ class Timeseries:
         f.parameters["rewrite_function_mesh"] = False
         f.parameters["flush_output"] = True
         return f
-        
+
     def close(self):
         for field in self.files.keys():
             self.files[field].close()
 
     def add_scalar_field(self, ufl_expression, field_name):
         filename = os.path.join(self.folder, "Timeseries",
-                                "{}_from_tstep_{}".format(field_name, self.tstep0))
+                                "{}_from_tstep_{}".format(field_name,
+                                                          self.tstep0))
         self.extra_fields[field_name] = ufl_expression
         self.files[field_name] = self._create_file(filename)
