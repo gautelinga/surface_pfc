@@ -41,6 +41,10 @@ def mpi_is_root():
     return mpi_rank() == 0
 
 
+def mpi_max(a):
+    return MPI.max(mpi_comm(), max(a))
+
+
 # Stolen from Oasis
 def convert(data):
     if isinstance(data, dict):

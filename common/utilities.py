@@ -1,5 +1,7 @@
 import dolfin as df
 from ufl.tensors import ListTensor
+from .cmd import mpi_rank
+import random
 
 
 # Tweaked from Oasis
@@ -27,3 +29,19 @@ class NdFunction(df.Function):
     def __call__(self):
         for i, _u in enumerate(self.u):
             self.fa[i].assign(self.sub(i), _u)
+
+
+# Class representing the intial conditions
+class RandomInitialConditions(df.UserExpression):
+    def __init__(self, u_, **kwargs):
+        random.seed(2 + mpi_rank())
+        self.size = len(u_)
+        super().__init__(**kwargs)
+
+    def eval(self, values, x):
+        for i in range(self.size):
+            values[i] = 0.0
+        values[0] = 2*random.random()-1
+
+    def value_shape(self):
+        return (self.size,)

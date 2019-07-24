@@ -110,19 +110,20 @@ def parse_timeseries_xdmf(xml_file):
         address = grid["Attribute"]["DataItem"]["#text"].split(":")
         address = (folder, address[0], address[1])
         field_type = grid["Attribute"]["@AttributeType"]
-        dsets[name] = [(time, address, field_type)]
+        dsets[name] = dict()
+        dsets[name][time] = (address, field_type)
         return dsets
 
     grid = grid["Grid"]
     for step in grid:
         name = step["Attribute"]["@Name"]
         if name not in dsets:
-            dsets[name] = []
+            dsets[name] = dict()
         time = int(step["Time"]["@Value"])
         address = step["Attribute"]["DataItem"]["#text"].split(":")
         address = (folder, address[0], address[1])
         field_type = step["Attribute"]["@AttributeType"]
-        dsets[name].append((time, address, field_type))
+        dsets[name][time] = (address, field_type)
 
     return dsets
 
@@ -137,10 +138,16 @@ def write_combined_xdmf(field_filenames, xyz_filename):
     is_vector = dict()
     dsets = dict()
     for filename in field_filenames:
-        dsets.update(parse_timeseries_xdmf(filename))
+        dsets_loc = parse_timeseries_xdmf(filename)
+        for dset_loc in dsets_loc:
+            if dset_loc in dsets:
+                dsets[dset_loc].update(dsets_loc[dset_loc])
+            else:
+                dsets[dset_loc] = dsets_loc[dset_loc]
 
     for field in dsets.keys():
-        is_vector[field] = dsets[field][0][2] == "Vector"
+        dsets_loc_keys = list(dsets[field].keys())
+        is_vector[field] = dsets[field][dsets_loc_keys[0]][1] == "Vector"
 
     keys = dict(
         name="Timeseries",
@@ -157,13 +164,14 @@ def write_combined_xdmf(field_filenames, xyz_filename):
     text = header.format(**keys)
 
     field_names = list(dsets.keys())
-    times = np.array([a[0] for a in dsets[field_names[0]]])
+    times = np.array(sorted([t for t, a in dsets[field_names[0]].items()]))
     for field_name in field_names[1:]:
-        times = np.union1d(np.array([a[0] for a in dsets[field_name]]), times)
+        times = np.union1d(
+            np.array([t for t, a in dsets[field_name].items()]), times)
 
     for field_name in field_names:
-        for i, a in enumerate(dsets[field_name]):
-            assert(a[0] == times[i])
+        for i, (t, a) in enumerate(dsets[field_name].items()):
+            assert(t == times[i])
 
     for i, time in enumerate(times):
         if is_1st:
@@ -175,11 +183,9 @@ def write_combined_xdmf(field_filenames, xyz_filename):
             text += mesh_ref.format(**keys)
         text += timestamp.format(time=time, **keys)
         for field in field_names:
-            if len(dsets[field]) > i:
-                dset = dsets[field][i]
-            else:
-                dset = dsets[field][-1]
-            field_folder, field_filename, field_loc = dset[1]
+            dset_time_max = max(dsets[field].keys())
+            dset = dsets[field][min(time, dset_time_max)]
+            field_folder, field_filename, field_loc = dset[0]
             if not is_vector[field]:
                 attrib = attrib_scalar
             else:

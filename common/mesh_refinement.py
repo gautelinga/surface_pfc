@@ -107,8 +107,8 @@ def densified_ellipsoid_mesh(res, Rx, Ry, Rz, eps=1e-2, return_details=False):
     mesh = df.RectangleMesh.create(
         [df.Point(0., 0.+eps), df.Point(2*np.pi, np.pi-eps)],
         [Ns, Nt],
-        # df.cpp.mesh.CellType.Type.triangle
-        df.cpp.mesh.CellType.Type.quadrilateral
+        df.cpp.mesh.CellType.Type.triangle
+        # df.cpp.mesh.CellType.Type.quadrilateral
     )
     x = mesh.coordinates()[:]
     x[:, 0] = phi_spline(x[:, 0], kappa)

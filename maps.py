@@ -4,6 +4,9 @@ import dolfin as df
 from bcs import EllipsoidPBC, CylinderPBC
 from common.mesh_refinement import densified_ellipsoid_mesh
 from common.utilities import NdFunction
+from common.io import load_mesh
+from common.cmd import info_red, info_cyan
+import os
 
 
 class GeoMap:
@@ -165,14 +168,23 @@ class GeoMap:
         f.vector()[:] = F
         return f
 
-    def initialize(self, res):
-        self.compute_mesh(res)
-        self.compute_pbc()
-        isgood = False
-        while not isgood:
+    def initialize(self, res, restart_folder=None):
+        if restart_folder is None:
+            self.compute_mesh(res)
+            self.compute_pbc()
+            isgood = False
+            while not isgood:
+                self.initialize_ref_space(res)
+                self.initialize_metric()
+                isgood = self.recompute_mesh(res)
+        else:
+            info_red("Load mesh from checkpoint")
+            self.ref_mesh = load_mesh(os.path.join(restart_folder,
+                                                   "fields.h5"),
+                                      use_partition_from_file=True)
+            self.compute_pbc()
             self.initialize_ref_space(res)
             self.initialize_metric()
-            isgood = self.recompute_mesh(res)
 
     def initialize_metric(self):  # , S_ref, t_vals, s_vals):
         self.g_tt = self.get_function("g_tt")
