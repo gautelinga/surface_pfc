@@ -49,17 +49,19 @@ def create_directories(results_folder):
     tsfolder = os.path.join(folder, "Timeseries")
     statsfolder = os.path.join(folder, "Statistics")
     checkpointfolder = os.path.join(folder, "Checkpoint")
+    settingsfolder = os.path.join(folder, "Settings")
     makedirs_safe(geofolder)
     makedirs_safe(tsfolder)
     makedirs_safe(statsfolder)
     makedirs_safe(checkpointfolder)
+    makedirs_safe(settingsfolder)
     # GL: add more?
     return folder
 
 
 class Timeseries:
-    def __init__(self, results_folder, u_, field_names, geo_map, tstep0,
-                 restart_folder=None):
+    def __init__(self, results_folder, u_, field_names, geo_map, tstep0=0,
+                 parameters=None, restart_folder=None):
         self.u_ = u_  # Pointer
         self.tstep0 = tstep0
         num_sub_el = u_.function_space().ufl_element().num_sub_elements()
@@ -85,6 +87,12 @@ class Timeseries:
                                     "{}_from_tstep_{}".format(field,
                                                               self.tstep0))
             self.files[field] = self._create_file(filename)
+
+        if parameters:
+            parametersfile = os.path.join(
+                self.folder, "Settings",
+                "parameters_from_tstep_{}.dat".format(self.tstep0))
+            dump_parameters(parameters, parametersfile)
 
         self.extra_fields = dict()
         self.extra_field_functions = dict()

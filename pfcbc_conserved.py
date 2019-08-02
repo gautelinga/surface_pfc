@@ -1,10 +1,9 @@
 import dolfin as df
 from maps import EllipsoidMap
-from common.io import Timeseries, save_checkpoint, load_checkpoint, load_mesh, \
+from common.io import Timeseries, save_checkpoint, load_checkpoint, \
     load_parameters
 from common.cmd import mpi_max, parse_command_line
-from common.utilities import RandomInitialConditions
-import sympy as sp
+from common.utilities import RandomInitialConditions, QuarticPotential
 import os
 
 parameters = dict(
@@ -62,21 +61,11 @@ if parameters["restart_folder"] is None:
 else:
     load_checkpoint(parameters["restart_folder"], u_, u_1)
 
-Psi, Tau = sp.symbols('psi tau')
-w = Tau/2*Psi**2 + Psi**4/4
-dw = sp.diff(w, Psi)
-ddw = sp.diff(dw, Psi)
-f_w = sp.lambdify([Psi, Tau], w)
-f_dw = sp.lambdify([Psi, Tau], dw)
-f_ddw = sp.lambdify([Psi, Tau], ddw)
-
-
-def w_lin(c_, c_1, vtau):
-    return f_dw(c_1, vtau) + f_ddw(c_1, vtau)*(c_-c_1)
-
+w = QuarticPotential()
+dw_lin = w.derivative_linearized(psi, psi_1, tau)
 
 # Brazovskii-Swift (non-conserved PFC with dc/dt = -delta F/delta c)
-m_NL = F_psi_NL = (1 + geo_map.K * h**2/12) * w_lin(psi, psi_1, tau) * xi
+m_NL = F_psi_NL = (1 + geo_map.K * h**2/12) * dw_lin * xi
 m_0 = 4 * nu * xi - 4 * geo_map.dotgrad(nu, xi)
 m_2 = (2 * (geo_map.H * nuhat - geo_map.K*nu)*eta
        - 4 * geo_map.dotcurvgrad(nuhat, eta)
@@ -113,8 +102,9 @@ T = parameters["T"]
 # Output file
 ts = Timeseries("results_pfcbc_conserved", u_,
                 ("psi", "mu", "nu", "nuhat"), geo_map, tstep,
+                parameters=parameters,
                 restart_folder=parameters["restart_folder"])
-E_0 = (2*nu_**2 - 2*geo_map.dotgrad(psi_, psi_) + f_w(psi_, tau))
+E_0 = (2*nu_**2 - 2*geo_map.dotgrad(psi_, psi_) + w(psi_, tau))
 ts.add_scalar_field(E_0, "E_0")
 ts.add_scalar_field(df.sqrt(geo_map.dotgrad(mu_, mu_)), "abs_grad_mu")
 
@@ -129,7 +119,8 @@ while t < T:
     solver.solve()
 
     if tstep % 1 == 0:
-        ts.dump(tstep)
+        # ts.dump(tstep)
+        ts.dump(t)
         grad_mu = ts.get_function("abs_grad_mu")
         grad_mu_max = mpi_max(grad_mu.vector().get_local())
         dt = 0.4/grad_mu_max

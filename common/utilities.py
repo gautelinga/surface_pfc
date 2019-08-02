@@ -1,7 +1,7 @@
 import dolfin as df
-from ufl.tensors import ListTensor
 from .cmd import mpi_rank
 import random
+import sympy as sp
 
 
 # Tweaked from Oasis
@@ -45,3 +45,20 @@ class RandomInitialConditions(df.UserExpression):
 
     def value_shape(self):
         return (self.size,)
+
+
+class QuarticPotential:
+    def __init__(self):
+        Psi, Tau = sp.symbols('psi tau')
+        w = Tau/2*Psi**2 + Psi**4/4
+        dw = sp.diff(w, Psi)
+        ddw = sp.diff(dw, Psi)
+        self.f_w = sp.lambdify([Psi, Tau], w)
+        self.f_dw = sp.lambdify([Psi, Tau], dw)
+        self.f_ddw = sp.lambdify([Psi, Tau], ddw)
+
+    def derivative_linearized(self, c_, c_1, tau):
+        return self.f_dw(c_1, tau) + self.f_ddw(c_1, tau)*(c_-c_1)
+
+    def __call__(self, c_, tau):
+        return self.f_w(c_, tau)
