@@ -64,7 +64,7 @@ else:
 w = QuarticPotential()
 dw_lin = w.derivative_linearized(psi, psi_1, tau)
 
-# Brazovskii-Swift (non-conserved PFC with dc/dt = -delta F/delta c)
+# Brazovskii-Swift (conserved PFC with dc/dt = grad^2 delta F/delta c)
 m_NL = F_psi_NL = (1 + geo_map.K * h**2/12) * dw_lin * xi
 m_0 = 4 * nu * xi - 4 * geo_map.dotgrad(nu, xi)
 m_2 = (2 * (geo_map.H * nuhat - geo_map.K*nu)*eta

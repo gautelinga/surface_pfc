@@ -242,11 +242,14 @@ class GeoMap:
         return n
 
     def compute_mesh(self, res):
-        N = int((self.t_max-self.t_min)/(self.s_max-self.s_min))
+        N = int(np.ceil((self.t_max-self.t_min)/(self.s_max-self.s_min)))
         ref_mesh = df.RectangleMesh.create(
             [df.Point(self.t_min, self.s_min),
              df.Point(self.t_max, self.s_max)],
             [N*res, res], df.cpp.mesh.CellType.Type.triangle)
+        import matplotlib.pyplot as plt
+        df.plot(ref_mesh)
+        plt.show()
         self.ref_mesh = ref_mesh
 
     def recompute_mesh(self, res):
@@ -486,14 +489,14 @@ class SphereMap(EllipsoidMap):
 
 
 class CylinderMap(GeoMap):
-    def __init_(self, R, L):
+    def __init__(self, R, L):
         t, s = sp.symbols('t s')
-        x = R * sp.cos(t)
-        y = R * sp.sin(t)
+        x = R * sp.cos(t/R)
+        y = R * sp.sin(t/R)
         z = s
 
         t_min = 0.
-        t_max = 2*np.pi
+        t_max = 2*np.pi*R
         s_min = 0.
         s_max = L
 

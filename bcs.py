@@ -29,3 +29,6 @@ class CylinderPBC(PBC):
         if x[0] > self.t_max - 100*df.DOLFIN_EPS:
             y[0] = self.t_min
             y[1] = x[1]
+        else:
+            y[0] = x[0]
+            y[1] = x[1]

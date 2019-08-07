@@ -1,33 +1,44 @@
 import dolfin as df
-from maps import EllipsoidMap
-from common.io import Timeseries
-import random
-import sympy as sp
+from maps import EllipsoidMap, CylinderMap
+from common.io import Timeseries, save_checkpoint, load_checkpoint, \
+    load_parameters
+from common.cmd import parse_command_line
+from common.utilities import RandomInitialConditions, QuarticPotential
+import os
 
 
-# Class representing the intial conditions
-class InitialConditions(df.UserExpression):
-    def __init__(self, **kwargs):
-        random.seed(2 + df.MPI.rank(df.MPI.comm_world))
-        super().__init__(**kwargs)
+parameters = dict(
+    folder="results_pfcbc",
+    R=20.0,  # Radius
+    L=100.0,
+    res=80,  # Resolution
+    dt=0.5,
+    tau=0.2,
+    h=1.1,
+    M=1.0,   # Mobility
+    restart_folder=None,
+    t_0=0.0,
+    tstep=0,
+    T=100.0,
+    checkpoint_intv=50,
+)
+cmd_kwargs = parse_command_line()
+parameters.update(**cmd_kwargs)
+if parameters["restart_folder"]:
+    load_parameters(parameters, os.path.join(
+        parameters["restart_folder"], "parameters.dat"))
+    parameters.update(**cmd_kwargs)
 
-    def eval(self, values, x):
-        values[0] = (0.0 - 0.00001*random.random())
-        values[1] = 0.0
+R = parameters["R"]
+L = parameters["L"]
+res = parameters["res"]
+dt = parameters["dt"]
+tau = parameters["tau"]
+h = parameters["h"]
+M = parameters["M"]
 
-    def value_shape(self):
-        return (3,)
-
-
-R = 30.0  # Radius
-res = 200  # Resolution
-dt = 0.5
-tau = 0.2
-ell = 1.0  # 10.0/(2*np.pi*np.sqrt(2))
-h = df.Constant(1.1)
-M = df.Constant(1.0)  # Mobility
-
-geo_map = EllipsoidMap(0.75*R, 0.75*R, 1.25*R)
+# geo_map = EllipsoidMap(0.75*R, 0.75*R, 1.25*R)
+geo_map = CylinderMap(R, L)
 geo_map.initialize(res)
 
 W = geo_map.mixed_space((geo_map.ref_el,
@@ -49,27 +60,20 @@ psi,  nu, nuhat = df.split(u)
 psi_, nu_, nuhat_ = df.split(u_)
 psi_1, nu_1, nuhat_1 = df.split(u_1)
 
-# Create intial conditions and interpolate
-u_init = InitialConditions(degree=1)
-u_1.interpolate(u_init)
-u_.assign(u_1)
+# Create intial conditions
+if parameters["restart_folder"] is None:
+    u_init = RandomInitialConditions(u_, degree=1)
+    u_1.interpolate(u_init)
+    u_.assign(u_1)
+else:
+    load_checkpoint(parameters["restart_folder"], u_, u_1)
 
-Psi, Tau = sp.symbols('psi tau')
-w = Tau/2*Psi**2 + Psi**4/4
-dw = sp.diff(w, Psi)
-ddw = sp.diff(dw, Psi)
-f_w = sp.lambdify([Psi, Tau], w)
-f_dw = sp.lambdify([Psi, Tau], dw)
-f_ddw = sp.lambdify([Psi, Tau], ddw)
-
-
-def w_lin(c_, c_1, vtau):
-    return f_dw(c_1, vtau) + f_ddw(c_1, vtau)*(c_-c_1)
-
+w = QuarticPotential()
+dw_lin = w.derivative_linearized(psi, psi_1, tau)
 
 # Brazovskii-Swift (non-conserved PFC with dc/dt = -delta F/delta c)
-m_NL = F_psi_NL = (1 + geo_map.K * h**2/12) * w_lin(psi, psi_1, tau) * xi
-m_0 = 4 * ell**2 * nu*xi - 4 * ell**4 * geo_map.dotgrad(nu, xi)
+m_NL = F_psi_NL = (1 + geo_map.K * h**2/12) * dw_lin * xi
+m_0 = 4 * nu*xi - 4 * geo_map.dotgrad(nu, xi)
 m_2 = (2 * (geo_map.H * nuhat - geo_map.K*nu)*eta
        - 4 * geo_map.dotcurvgrad(nuhat, eta)
        + 5 * geo_map.K * geo_map.dotgrad(nu, eta)
@@ -96,24 +100,32 @@ solver = df.LinearVariationalSolver(problem)
 df.parameters["form_compiler"]["optimize"] = True
 df.parameters["form_compiler"]["cpp_optimize"] = True
 
+#
+t = parameters["t_0"]
+tstep = parameters["tstep"]
+T = parameters["T"]
+
 # Output file
-ts = Timeseries("results_pfcbc", u_, ("psi", "nu", "nuhat"), geo_map, 0)
-E_0 = (2*nu_**2 - 2*geo_map.dotgrad(psi_, psi_) + f_w(psi_, tau))
+ts = Timeseries(parameters["folder"], u_, ("psi", "nu", "nuhat"),
+                geo_map,
+                tstep,
+                parameters=parameters,
+                restart_folder=parameters["restart_folder"])
+E_0 = (2*nu_**2 - 2*geo_map.dotgrad(psi_, psi_) + w(psi_, tau))
 ts.add_scalar_field(E_0, "E_0")
 
-# Step in time
-t = 0.0
-it = 0
-T = 100.0
-
-ts.dump(it)
+ts.dump(tstep)
 
 while t < T:
-    it += 1
+    tstep += 1
     t += dt
 
     solver.solve()
 
     u_1.assign(u_)
-    if it % 1 == 0:
-        ts.dump(it)
+    if tstep % 1 == 0:
+        ts.dump(tstep)
+
+    if tstep % parameters["checkpoint_intv"] == 0 or t >= T:
+        save_checkpoint(tstep, t, geo_map.ref_mesh,
+                        u_, u_1, ts.folder, parameters)
