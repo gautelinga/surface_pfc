@@ -222,50 +222,68 @@ class GeoMap:
         self.Gt_st = self.get_function("Gt_st")
         self.Gt_tt = self.get_function("Gt_tt")
 
-        self.gab =  ufl.as_tensor([[self.gtt,self.gst],[self.gst,self.gss]]) # Inverse metric, g^ij
-        self.Kab =  ufl.as_tensor([[self.Ktt,self.Kst],[self.Kst,self.Kss]]) # K^{ij}
-        self.K_ab =  ufl.as_tensor([[self.K_tt,self.K_st],[self.K_st,self.K_ss]]) # K_{ij}
-        self.Ka_b =  ufl.as_tensor([[self.Kt_t,self.Kt_s],[self.Ks_t,self.Ks_s]]) # K^i_j
-        self.Ga_bc = ufl.as_tensor([[[self.Gt_tt,self.Gt_st],[self.Gt_st,self.Gt_ss]],[[self.Gs_tt,self.Gs_st],[self.Gs_st,self.Gs_ss]]]) # Christoffel symbols
-        # We assume the format ufl.as_tensor([[[ttt,tts],[tst,tss]],[[stt,sts],[sst,sss]]]) (I hope that's true)
+        self.gab = ufl.as_tensor([[self.gtt, self.gst],
+                                  [self.gst, self.gss]])  # Inverse metric, g^ij
+        self.Kab = ufl.as_tensor([[self.Ktt, self.Kst],
+                                  [self.Kst, self.Kss]])  # K^{ij}
+        self.K_ab = ufl.as_tensor([[self.K_tt, self.K_st],
+                                   [self.K_st, self.K_ss]])  # K_{ij}
+        self.Ka_b = ufl.as_tensor([[self.Kt_t, self.Kt_s],
+                                   [self.Ks_t, self.Ks_s]])  # K^i_j
+        self.Ga_bc = ufl.as_tensor([[[self.Gt_tt, self.Gt_st],
+                                     [self.Gt_st, self.Gt_ss]],
+                                    [[self.Gs_tt, self.Gs_st],
+                                     [self.Gs_st, self.Gs_ss]]])  # Christoffel symbols
+        
+        # We assume the format
+        # ufl.as_tensor([[[ttt, tts], [tst, tss]], [[stt, sts], [sst, sss]]])
 
-    def CovD10(self, V): # Takes covariant derivative of a (1,0) tensor V -- a vector.
+    def CovD10(self, V):
+        """ Takes covariant derivative of a (1,0) tensor V -- a vector. """
         # Christoffel symbols: Ga_bc[i,j,k]
-        i, j, k, l = ufl.Index(), ufl.Index(), ufl.Index(), ufl.Index()
-        nablaV = ufl.as_tensor(V[i].dx(j) + self.Ga_bc[i,j,l]*V[l], (i,j))
+        i, j, k = ufl.Index(), ufl.Index(), ufl.Index(), ufl.Index()
+        nablaV = ufl.as_tensor(V[i].dx(j) + self.Ga_bc[i, j, k]*V[k], (i, j))
         return nablaV
 
-    def CovD01(self, W): # Takes covariant derivative of a (0,1) tensor W -- a co-vector or one-form.
+    def CovD01(self, W):
+        """Takes covariant derivative of a (0,1) tensor W -- a co-vector or
+        one-form."""
         # Christoffel symbols: Ga_bc[i,j,k]
-        i, j, k, l = ufl.Index(), ufl.Index(), ufl.Index(), ufl.Index()
-        nablaW = ufl.as_tensor(W[i].dx(j) - self.Ga_bc[l,j,i]*W[l], (i,j))
+        i, j, k = ufl.Index(), ufl.Index(), ufl.Index()
+        nablaW = ufl.as_tensor(W[i].dx(j) - self.Ga_bc[k, j, i]*W[k], (i, j))
         return nablaW
 
-    def CovD02(self, T): # Takes covariant derivative of a (0,2) tensor T
+    def CovD02(self, T):
+        """ Takes covariant derivative of a (0,2) tensor T. """
         # Christoffel symbols: Ga_bc[i,j,k]
         i, j, k, l = ufl.Index(), ufl.Index(), ufl.Index(), ufl.Index()
-        nablaT = ufl.as_tensor(T[i,j].dx(k) - self.Ga_bc[l,k,i]*T[l,j] - self.Ga_bc[l,k,j]*T[i,l], (i,j,k))
+        nablaT = ufl.as_tensor(T[i, j].dx(k) - self.Ga_bc[l, k, i]*T[l, j]
+                               - self.Ga_bc[l, k, j]*T[i, l], (i, j, k))
         return nablaT
 
-    def CovD11(self, T): # Takes covariant derivative of a (1,1) tensor T
+    def CovD11(self, T):
+        """ Takes covariant derivative of a (1,1) tensor T. """
         # Christoffel symbols: Ga_bc[i,j,k]
         i, j, k, l = ufl.Index(), ufl.Index(), ufl.Index(), ufl.Index()
-        nablaT = ufl.as_tensor(T[i,j].dx(k) + self.Ga_bc[i,k,l]*T[l,j] - self.Ga_bc[l,k,j]*T[i,l], (i,j,k))
+        nablaT = ufl.as_tensor(T[i, j].dx(k) + self.Ga_bc[i, k, l]*T[l, j]
+                               - self.Ga_bc[l, k, j]*T[i, l], (i, j, k))
         return nablaT
 
-    def CovD20(self, T): # Takes covariant derivative of a (2,0) tensor T
+    def CovD20(self, T):
+        """ Takes covariant derivative of a (2,0) tensor T. """
         # Christoffel symbols: Ga_bc[i,j,k]
         i, j, k, l = ufl.Index(), ufl.Index(), ufl.Index(), ufl.Index()
-        nablaT = ufl.as_tensor(T[i,j].dx(k) + self.Ga_bc[i,k,l]*T[l,j] + self.Ga_bc[j,k,l]*T[i,l], (i,j,k))
+        nablaT = ufl.as_tensor(T[i, j].dx(k) + self.Ga_bc[i, k, l]*T[l, j]
+                               + self.Ga_bc[j, k, l]*T[i, l], (i, j, k))
         return nablaT
 
     def dotgrad(self, u, v):
-        i, j, k, l = ufl.Index(), ufl.Index(), ufl.Index(), ufl.Index()
-        return self.gab[i,j]*u.dx(i)*v.dx(j)
+        i, j = ufl.Index(), ufl.Index()
+        return self.gab[i, j]*u.dx(i)*v.dx(j)
 
     def dotcurvgrad(self, u, v):
-        i, j, k, l = ufl.Index(), ufl.Index(), ufl.Index(), ufl.Index()
-        return self.Kab[i,j]*u.dx(i)*v.dx(j)
+        i, j = ufl.Index(), ufl.Index()
+        return self.Kab[i, j]*u.dx(i)*v.dx(j)
 
     def form(self, integrand):
         return integrand*self.sqrt_g*self.dS_ref
