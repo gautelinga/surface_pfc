@@ -7,6 +7,8 @@ from common.utilities import NdFunction
 from common.io import load_mesh
 from common.cmd import info_red, info_cyan
 import os
+import ufl
+
 
 
 class GeoMap:
@@ -200,9 +202,19 @@ class GeoMap:
         self.Kst = self.get_function("Kst")
         self.Kss = self.get_function("Kss")
 
+        self.K_tt = self.get_function("K_tt")
+        self.K_ts = self.get_function("K_ts")
+        self.K_st = self.get_function("K_st")
+        self.K_ss = self.get_function("K_ss")
+
+        self.Kt_t = self.get_function("Kt_t")
+        self.Kt_s = self.get_function("Kt_s")
+        self.Ks_t = self.get_function("Ks_t")
+        self.Ks_s = self.get_function("Ks_s")
+
         self.K = self.get_function("K")
         self.H = self.get_function("H")
-        
+
         self.Gs_ss = self.get_function("Gs_ss")
         self.Gs_st = self.get_function("Gs_st")
         self.Gs_tt = self.get_function("Gs_tt")
@@ -210,17 +222,68 @@ class GeoMap:
         self.Gt_st = self.get_function("Gt_st")
         self.Gt_tt = self.get_function("Gt_tt")
 
+        self.gab = ufl.as_tensor([[self.gtt, self.gst],
+                                  [self.gst, self.gss]])  # Inverse metric, g^ij
+        self.Kab = ufl.as_tensor([[self.Ktt, self.Kst],
+                                  [self.Kst, self.Kss]])  # K^{ij}
+        self.K_ab = ufl.as_tensor([[self.K_tt, self.K_st],
+                                   [self.K_st, self.K_ss]])  # K_{ij}
+        self.Ka_b = ufl.as_tensor([[self.Kt_t, self.Kt_s],
+                                   [self.Ks_t, self.Ks_s]])  # K^i_j
+        self.Ga_bc = ufl.as_tensor([[[self.Gt_tt, self.Gt_st],
+                                     [self.Gt_st, self.Gt_ss]],
+                                    [[self.Gs_tt, self.Gs_st],
+                                     [self.Gs_st, self.Gs_ss]]])  # Christoffel symbols
+        
+        # We assume the format
+        # ufl.as_tensor([[[ttt, tts], [tst, tss]], [[stt, sts], [sst, sss]]])
+
+    def CovD10(self, V):
+        """ Takes covariant derivative of a (1,0) tensor V -- a vector. """
+        # Christoffel symbols: Ga_bc[i,j,k]
+        i, j, k = ufl.Index(), ufl.Index(), ufl.Index(), ufl.Index()
+        nablaV = ufl.as_tensor(V[i].dx(j) + self.Ga_bc[i, j, k]*V[k], (i, j))
+        return nablaV
+
+    def CovD01(self, W):
+        """Takes covariant derivative of a (0,1) tensor W -- a co-vector or
+        one-form."""
+        # Christoffel symbols: Ga_bc[i,j,k]
+        i, j, k = ufl.Index(), ufl.Index(), ufl.Index()
+        nablaW = ufl.as_tensor(W[i].dx(j) - self.Ga_bc[k, j, i]*W[k], (i, j))
+        return nablaW
+
+    def CovD02(self, T):
+        """ Takes covariant derivative of a (0,2) tensor T. """
+        # Christoffel symbols: Ga_bc[i,j,k]
+        i, j, k, l = ufl.Index(), ufl.Index(), ufl.Index(), ufl.Index()
+        nablaT = ufl.as_tensor(T[i, j].dx(k) - self.Ga_bc[l, k, i]*T[l, j]
+                               - self.Ga_bc[l, k, j]*T[i, l], (i, j, k))
+        return nablaT
+
+    def CovD11(self, T):
+        """ Takes covariant derivative of a (1,1) tensor T. """
+        # Christoffel symbols: Ga_bc[i,j,k]
+        i, j, k, l = ufl.Index(), ufl.Index(), ufl.Index(), ufl.Index()
+        nablaT = ufl.as_tensor(T[i, j].dx(k) + self.Ga_bc[i, k, l]*T[l, j]
+                               - self.Ga_bc[l, k, j]*T[i, l], (i, j, k))
+        return nablaT
+
+    def CovD20(self, T):
+        """ Takes covariant derivative of a (2,0) tensor T. """
+        # Christoffel symbols: Ga_bc[i,j,k]
+        i, j, k, l = ufl.Index(), ufl.Index(), ufl.Index(), ufl.Index()
+        nablaT = ufl.as_tensor(T[i, j].dx(k) + self.Ga_bc[i, k, l]*T[l, j]
+                               + self.Ga_bc[j, k, l]*T[i, l], (i, j, k))
+        return nablaT
+
     def dotgrad(self, u, v):
-        return (self.gtt*u.dx(0)*v.dx(0)
-                + self.gss*u.dx(1)*v.dx(1)
-                + self.gst*u.dx(0)*v.dx(1)
-                + self.gst*u.dx(1)*v.dx(0))
+        i, j = ufl.Index(), ufl.Index()
+        return self.gab[i, j]*u.dx(i)*v.dx(j)
 
     def dotcurvgrad(self, u, v):
-        return (self.Ktt*u.dx(0)*v.dx(0)
-                + self.Kts*u.dx(0)*v.dx(1)
-                + self.Kst*u.dx(1)*v.dx(0)
-                + self.Kss*u.dx(1)*v.dx(1))
+        i, j = ufl.Index(), ufl.Index()
+        return self.Kab[i, j]*u.dx(i)*v.dx(j)
 
     def form(self, integrand):
         return integrand*self.sqrt_g*self.dS_ref
@@ -284,147 +347,6 @@ class GeoMap:
         local_area.rename("localarea", "tmp")
         return local_area
 
-    def trace(self, Mu, index_pos="ll"):
-        if index_pos == "ll":
-            mu_tt, mu_ts, mu_st, mu_ss = Mu
-            return (self.gss*mu_ss + self.gst*(mu_st + mu_ts) + self.gtt*mu_tt)
-        elif index_pos in ["lu", "ul"]:
-            mut_t, mut_s, mus_t, mus_s = Mu
-            return mut_t + mus_s
-        elif index_pos == "uu":
-            mutt, muts, must, muss = Mu
-            return (self.g_ss*muss + self.g_st*(must + muts) + self.g_tt*mutt)
-        else:
-            exit("Unknown index_pos in GeoMap.trace()")
-
-    def _inner(self, A, B):
-        att, ats, ast, ass = A
-        b_tt, b_ts, b_st, b_ss = B
-        return ass*b_ss + ast*b_st + ats*b_ts + att*b_tt
-
-    def inner(self, A, B, index_pos="uull"):
-        if index_pos in ["uull", "lluu"]:
-            return self._inner(A, B)
-        elif index_pos == "uuuu":
-            B_ = self.down_matrix(B)
-            return self._inner(A, B_)
-        elif index_pos == "llll":
-            Ba = self.up_matrix(B)
-            return self._inner(A, Ba)
-        else:
-            exit("Not implemented index_pos in GeoMap.inner().")
-
-    def _dot(self, m, n_):
-        mt, ms = m
-        n_t, n_s = n_
-        return ms*n_s + mt*n_t
-
-    def dot(self, m, n, index_pos="ul"):
-        if index_pos in ["ul", "lu"]:
-            return self._dot(m, n)
-        elif index_pos == "ll":
-            return self._dot(m, self.up(n))
-        elif index_pos == "uu":
-            return self._dot(m, self.down(n))
-        else:
-            exit("Unknown index_pos in GeoMap.dot()")
-
-    def up(self, m_):
-        m_t, m_s = m_
-        ms = self.gss * m_s + self.gst * m_t
-        mt = self.gst * m_s + self.gtt * m_t
-        m = (mt, ms)
-        return m
-
-    def down(self, m):
-        mt, ms = m
-        m_s = self.g_ss * ms + self.g_st * mt
-        m_t = self.g_st * ms + self.g_tt * mt
-        m_ = (m_t, m_s)
-        return m_
-
-    def _up_matrix(self, A_, index):
-        if index == 1:
-            # First index
-            a_tt, a_ts, a_st, a_ss = A_
-            at_t, as_t = self.up((a_tt, a_st))
-            at_s, as_s = self.up((a_ts, a_ss))
-            A = (at_t, at_s, as_t, as_s)
-            return A
-        if index == 2:
-            # Second index
-            at_t, at_s, as_t, as_s = A_
-            att, ats = self.up((at_t, at_s))
-            ast, ass = self.up((as_t, as_s))
-            A = (att, ats, ast, ass)
-            return A
-
-    def up_matrix(self, A_, indices=(1, 2)):
-        A = A_
-        for index in indices:
-            A = self._up_matrix(A, index)
-        return A
-
-    def grad(self, a):
-        """ Grad of scalar. """
-        a_t = a.dx(0)
-        a_s = a.dx(1)
-        return (a_t, a_s)
-
-    def grad_matrix(self, A, grad_index_pos="l", matrix_index_pos="uu"):
-        if grad_index_pos != "l":
-            exit("Upper grad not implemented in GeoMap.grad_matrix()")
-        if matrix_index_pos == "uu":
-            att, ats, ast, ass = A
-            Dass_s = ass.dx(1) + 2*self.Gs_ss * ass + self.Gs_st * (ats + ast)
-            Dass_t = ass.dx(0) + 2*self.Gs_st * ass + self.Gs_tt * (ats + ast)
-            Dast_s = (ast.dx(1) + (self.Gs_ss + self.Gt_st) * ast
-                      + self.Gt_ss * ass + self.Gs_st * att)
-            Dast_t = (ast.dx(0) + (self.Gs_st + self.Gt_tt) * ast
-                      + self.Gt_st * ass + self.Gs_tt * att)
-            Dats_s = (ats.dx(1) + self.Gt_ss * ass
-                      + (self.Gs_ss + self.Gt_st) * ats + self.Gs_st * att)
-            Dats_t = (ats.dx(0) + self.Gt_st * ass
-                      + (self.Gs_st + self.Gt_tt) * ats + self.Gs_tt * att)
-            Datt_s = att.dx(1) + self.Gt_ss * (ast + ats) + 2 * self.Gt_st * att
-            Datt_t = att.dx(0) + self.Gt_st * (ast + ats) + 2 * self.Gt_tt * att
-            DA = (Datt_t, Datt_s, Dats_t, Dats_s,
-                  Dast_t, Dast_s, Dass_t, Dass_s)
-        elif matrix_index_pos == "ll":
-            a_tt, a_ts, a_st, a_ss = A
-            Da_sss = a_ss.dx(1) - 2*self.Gs_ss * a_ss - self.Gs_st * (a_ts + a_st)
-            Da_sst = a_ss.dx(0) - 2*self.Gs_st * a_ss - self.Gs_tt * (a_ts + a_st)
-            Da_sts = (a_st.dx(1) - (self.Gs_ss + self.Gt_st) * a_st
-                      - self.Gt_ss * ass - self.Gs_st * a_tt)
-            Da_stt = (a_st.dx(0) - (self.Gs_st + self.Gt_tt) * a_st
-                      - self.Gt_st * a_ss - self.Gs_tt * a_tt)
-            Da_tss = (a_ts.dx(1) - self.Gt_ss * a_ss
-                      - (self.Gs_ss + self.Gt_st) * a_ts - self.Gs_st * att)
-            Da_tst = (a_ts.dx(0) - self.Gt_st * a_ss
-                      - (self.Gs_st + self.Gt_tt) * a_ts - self.Gs_tt * a_tt)
-            Da_tts = att.dx(1) - self.Gt_ss * (a_st + a_ts) - 2 * self.Gt_st * a_tt
-            Da_ttt = att.dx(0) - self.Gt_st * (a_st + a_ts) - 2 * self.Gt_tt * a_tt
-            DA = (Da_ttt, Da_tts, Da_tst, Da_tss,
-                  Da_stt, Da_sts, Da_sst, Da_sss)
-        else:
-            exit("Not implemented matrix_index_pos in GeoMap.grad_matrix()")
-        return DA
-
-    def trace_tensor(self, T, index_pos="uul", sum_index=1):
-        if index_pos != "uul":
-            exit("Unknown index_pos in GeoMap.trace_tensor()")
-        att_t, att_s, ats_t, ats_s, ast_t, ast_s, ass_t, ass_s = T
-        # Returns a vector v
-        if sum_index == 1:
-            vs = ass_s + ats_s
-            vt = ast_s + att_t
-        elif sum_index == 2:
-            vs = ass_s + ast_t
-            vt = ats_s + att_t
-        else:
-            exit("Invalid summation request.")
-        return (vt, vs)
-
 
 class EllipsoidMap(GeoMap):
     def __init__(self, Rx, Ry, Rz):
@@ -463,7 +385,7 @@ class EllipsoidMap(GeoMap):
                                        self.ref_mesh.topology().dim())
         cell_markers.set_all(False)
         isgood = True
-        
+
         for cell in df.cells(self.ref_mesh):
             deltaS_ref = cell.volume()
             sqrt_g_loc = self.sqrt_g(cell.midpoint())
