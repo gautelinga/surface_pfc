@@ -2,6 +2,7 @@ import dolfin as df
 from .cmd import mpi_rank
 import random
 import sympy as sp
+import numpy as np
 
 
 # Tweaked from Oasis
@@ -31,7 +32,7 @@ class NdFunction(df.Function):
             self.fa[i].assign(self.sub(i), _u)
 
 
-# Class representing the intial conditions
+# Class representing the intial conditions.
 class RandomInitialConditions(df.UserExpression):
     def __init__(self, u_, **kwargs):
         random.seed(2 + mpi_rank())
@@ -46,6 +47,35 @@ class RandomInitialConditions(df.UserExpression):
     def value_shape(self):
         return (self.size,)
 
+# Class representing the intial conditions. Wavenumber hardcoded for now.
+class AroundInitialConditions(df.UserExpression):
+    def __init__(self, u_, **kwargs):
+        random.seed(2 + mpi_rank())
+        self.size = len(u_)
+        super().__init__(**kwargs)
+
+    def eval(self, values, x):
+        for i in range(self.size):
+            values[i] = 0.0
+        values[0] = 0.5*np.sin(10*x[1])
+
+    def value_shape(self):
+        return (self.size,)
+
+# Class representing the intial conditions. Wavenumber hardcoded for now.
+class AlongInitialConditions(df.UserExpression):
+    def __init__(self, u_, **kwargs):
+        random.seed(2 + mpi_rank())
+        self.size = len(u_)
+        super().__init__(**kwargs)
+
+    def eval(self, values, x):
+        for i in range(self.size):
+            values[i] = 0.0
+        values[0] = 0.5*np.sin(5*x[0])
+
+    def value_shape(self):
+        return (self.size,)
 
 class QuarticPotential:
     def __init__(self):

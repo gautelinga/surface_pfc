@@ -1,9 +1,9 @@
 import dolfin as df
-from maps import EllipsoidMap
+from maps import EllipsoidMap, CylinderMap
 from common.io import Timeseries, save_checkpoint, load_checkpoint, \
     load_parameters
 from common.cmd import mpi_max, parse_command_line
-from common.utilities import RandomInitialConditions, QuarticPotential
+from common.utilities import RandomInitialConditions, QuarticPotential, AroundInitialConditions, AlongInitialConditions
 import os
 
 parameters = dict(
@@ -17,6 +17,7 @@ parameters = dict(
     t_0=0.0,
     tstep=0,
     T=1000.0,
+    #T=10000.0,
     checkpoint_intv=50,
 )
 cmd_kwargs = parse_command_line()
@@ -33,7 +34,8 @@ tau = parameters["tau"]
 h = parameters["h"]
 M = parameters["M"]
 
-geo_map = EllipsoidMap(0.75*R, 0.75*R, 1.25*R)
+#geo_map = EllipsoidMap(0.75*R, 0.75*R, 1.25*R)
+geo_map = CylinderMap(0.75*R, 4*R)
 geo_map.initialize(res, restart_folder=parameters["restart_folder"])
 
 W = geo_map.mixed_space((geo_map.ref_el,)*4)
@@ -55,7 +57,9 @@ psi_1, mu_1, nu_1, nuhat_1 = df.split(u_1)
 
 # Create intial conditions
 if parameters["restart_folder"] is None:
-    u_init = RandomInitialConditions(u_, degree=1)
+    #u_init = RandomInitialConditions(u_, degree=1)
+    #u_init = AroundInitialConditions(u_, degree=1)
+    u_init = AlongInitialConditions(u_, degree=1)
     u_1.interpolate(u_init)
     u_.assign(u_1)
 else:
@@ -123,7 +127,7 @@ while t < T:
         ts.dump(t)
         grad_mu = ts.get_function("abs_grad_mu")
         grad_mu_max = mpi_max(grad_mu.vector().get_local())
-        dt = 0.4/grad_mu_max
+        dt = min(0.4/grad_mu_max,1)
         ts.dump_stats(t, [grad_mu_max, dt], "data")
 
     if tstep % parameters["checkpoint_intv"] == 0 or t >= T:
