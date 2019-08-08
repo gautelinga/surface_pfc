@@ -5,6 +5,7 @@ from common.io import Timeseries, save_checkpoint, load_checkpoint, \
 from common.cmd import mpi_max, parse_command_line
 from common.utilities import RandomInitialConditions, QuarticPotential, AroundInitialConditions, AlongInitialConditions
 import os
+import ufl
 
 parameters = dict(
     R=30.0,  # Radius
@@ -68,20 +69,26 @@ else:
 w = QuarticPotential()
 dw_lin = w.derivative_linearized(psi, psi_1, tau)
 
+# Define some UFL indices:
+i, j, k, l = ufl.Index(), ufl.Index(), ufl.Index(), ufl.Index()
+
+# dotgrad(u,v) -> geo_map.gab[i,j]*u.dx(i)*v.dx(j)
+# dotcurvgrad(u,v) -> geo_map.Kab[i,j]*u.dx(i)*v.dx(j)
+
 # Brazovskii-Swift (conserved PFC with dc/dt = grad^2 delta F/delta c)
 m_NL = F_psi_NL = (1 + geo_map.K * h**2/12) * dw_lin * xi
-m_0 = 4 * nu * xi - 4 * geo_map.dotgrad(nu, xi)
+m_0 = 4 * nu * xi - 4 * geo_map.gab[i,j]*nu.dx(i)*xi.dx(j)
 m_2 = (2 * (geo_map.H * nuhat - geo_map.K*nu)*eta
-       - 4 * geo_map.dotcurvgrad(nuhat, eta)
-       + 5 * geo_map.K * geo_map.dotgrad(nu, eta)
-       - 2 * geo_map.H * (geo_map.dotgrad(nuhat, eta)
-                          + geo_map.dotcurvgrad(nu, eta)))/3
+       - 4 * geo_map.Kab[i,j]*nuhat.dx(i)*eta.dx(j)
+       + 5 * geo_map.K * geo_map.gab[i,j]*nu.dx(i)*eta.dx(j)
+       - 2 * geo_map.H * (geo_map.gab[i,j]*nuhat.dx(i)*eta.dx(j)
+                          + geo_map.Kab[i,j]*nu.dx(i)*eta.dx(j) ))/3
 m = m_NL + m_0 + h**2 * m_2
 
-F_psi = geo_map.form(1/dt * (psi - psi_1) * chi + M*geo_map.dotgrad(mu, chi))
+F_psi = geo_map.form(1/dt * (psi - psi_1) * chi + M * geo_map.gab[i,j]*mu.dx(i)*chi.dx(j) )
 F_mu = geo_map.form(mu*xi - m)
-F_nu = geo_map.form(nu*eta + geo_map.dotgrad(psi, eta))
-F_nuhat = geo_map.form(nuhat*etahat + geo_map.dotcurvgrad(psi, etahat))
+F_nu = geo_map.form(nu*eta + geo_map.gab[i,j]*psi.dx(i)*eta.dx(j) )
+F_nuhat = geo_map.form(nuhat*etahat + geo_map.Kab[i,j]*psi.dx(i)*etahat.dx(j) )
 
 F = F_psi + F_mu + F_nu + F_nuhat
 
@@ -108,9 +115,9 @@ ts = Timeseries("results_pfcbc_conserved", u_,
                 ("psi", "mu", "nu", "nuhat"), geo_map, tstep,
                 parameters=parameters,
                 restart_folder=parameters["restart_folder"])
-E_0 = (2*nu_**2 - 2*geo_map.dotgrad(psi_, psi_) + w(psi_, tau))
+E_0 = (2*nu_**2 - 2 * geo_map.gab[i,j]*psi_.dx(i)*psi_.dx(j) + w(psi_, tau))
 ts.add_scalar_field(E_0, "E_0")
-ts.add_scalar_field(df.sqrt(geo_map.dotgrad(mu_, mu_)), "abs_grad_mu")
+ts.add_scalar_field(df.sqrt(geo_map.gab[i,j]*mu_.dx(i)*mu_.dx(j)), "abs_grad_mu")
 
 # Step in time
 ts.dump(tstep)
