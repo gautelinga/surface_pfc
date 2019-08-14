@@ -57,7 +57,7 @@ class AroundInitialConditions(df.UserExpression):
     def eval(self, values, x):
         for i in range(self.size):
             values[i] = 0.0
-        values[0] = 0.5*np.sin(10*x[1])
+        values[0] = 0.5*np.sin(x[1]/np.sqrt(2))
 
     def value_shape(self):
         return (self.size,)
@@ -72,7 +72,7 @@ class AlongInitialConditions(df.UserExpression):
     def eval(self, values, x):
         for i in range(self.size):
             values[i] = 0.0
-        values[0] = 0.5*np.sin(5*x[0])
+        values[0] = 0.5*np.sin(x[0]/np.sqrt(2))
 
     def value_shape(self):
         return (self.size,)

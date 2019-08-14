@@ -234,7 +234,7 @@ class GeoMap:
                                      [self.Gt_st, self.Gt_ss]],
                                     [[self.Gs_tt, self.Gs_st],
                                      [self.Gs_st, self.Gs_ss]]])  # Christoffel symbols
-        
+
         # We assume the format
         # ufl.as_tensor([[[ttt, tts], [tst, tss]], [[stt, sts], [sst, sss]]])
 
@@ -431,7 +431,7 @@ class CylinderMap(GeoMap):
     def compute_pbc(self):
         ts_min = (self.t_min, self.s_min)
         ts_max = (self.t_max, self.s_max)
-        self.pbc = CylinderPBC(ts_min, ts_max)
+        self.pbc = CylinderPBC(ts_min, ts_max, True) # Double periodic
 
 
 class GaussianBumpMap(GeoMap):
