@@ -1,9 +1,10 @@
 import dolfin as df
 import os
 from .cmd import mpi_is_root, mpi_barrier, mpi_comm, \
-    mpi_size, mpi_rank, info_red, info_cyan
+    mpi_size, mpi_rank, info_red, info_cyan, mpi_is_root
 import numpy as np
 import json
+import h5py
 
 
 def dump_xdmf(f, folder=""):
@@ -12,6 +13,28 @@ def dump_xdmf(f, folder=""):
         xdmff.parameters["rewrite_function_mesh"] = False
         xdmff.parameters["flush_output"] = True
         xdmff.write(f)
+
+
+def dump_coords(geo_map, folder=""):
+    name = "xyz"
+    filename = os.path.join(folder, "{}.xdmf".format(name))
+    xyz = geo_map.coords()
+    with df.XDMFFile(mpi_comm(), filename) as xdmff:
+        xdmff.parameters["rewrite_function_mesh"] = False
+        xdmff.parameters["flush_output"] = True
+        xdmff.write(xyz)
+    mpi_barrier()
+    if mpi_is_root() and geo_map.is_periodic_in_3d():
+        with h5py.File(os.path.join(
+                folder, "{}.h5".format(name)), "r+") as h5f:
+            ts = np.array(h5f["Mesh/mesh/geometry"])
+            t = ts[:, 0]
+            s = ts[:, 1]
+            xyz_new = np.vstack((geo_map.evalf["x"](t, s),
+                                 geo_map.evalf["y"](t, s),
+                                 geo_map.evalf["z"](t, s))).T
+            xyz = h5f["VisualisationVector/0"]
+            xyz[:, :] = xyz_new
 
 
 def makedirs_safe(folder):
@@ -78,7 +101,7 @@ class Timeseries:
         else:
             self.folder = restart_folder.split("Checkpoint")[0]
         geofolder = os.path.join(self.folder, "Geometry")
-        dump_xdmf(geo_map.coords(), folder=geofolder)
+        dump_coords(geo_map, folder=geofolder)
         dump_xdmf(geo_map.normal(), folder=geofolder)
 
         self.files = dict()
