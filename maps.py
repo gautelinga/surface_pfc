@@ -10,7 +10,6 @@ import os
 import ufl
 
 
-
 class GeoMap:
     def __init__(self, xyz, ts, ts_min, ts_max):
         self.t = ts[0]
