@@ -278,10 +278,10 @@ class GeoMap:
 
     def LB00(self, psi):
         """ Applies Laplace-Beltrami operator to a scalar """
-        i, j, k, l = ufl.Index(), ufl.Index(), ufl.Index(), ufl.Index()
+        i, j = ufl.Index(), ufl.Index()
         gradpsi = ufl.as_tensor(psi.dx(i), (i))
         ddpsi = self.CovD01(gradpsi)
-        LBpsi = self.gab[i,j] * ddpsi[i,j]
+        LBpsi = self.gab[i, j] * ddpsi[i, j]
         return LBpsi
 
     def dotgrad(self, u, v):
@@ -318,6 +318,9 @@ class GeoMap:
             [df.Point(self.t_min, self.s_min),
              df.Point(self.t_max, self.s_max)],
             [N*res, res], df.cpp.mesh.CellType.Type.triangle)
+        import matplotlib.pyplot as plt
+        #df.plot(ref_mesh)
+        #plt.show()
         self.ref_mesh = ref_mesh
 
     def recompute_mesh(self, res):
@@ -354,7 +357,7 @@ class GeoMap:
 
     def is_periodic_in_3d(self):
         return False
-
+    
 
 class EllipsoidMap(GeoMap):
     def __init__(self, Rx, Ry, Rz):
