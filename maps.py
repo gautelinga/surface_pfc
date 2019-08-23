@@ -276,6 +276,14 @@ class GeoMap:
                                + self.Ga_bc[j, k, l]*T[i, l], (i, j, k))
         return nablaT
 
+    def LB00(self, psi):
+        """ Applies Laplace-Beltrami operator to a scalar """
+        i, j, k, l = ufl.Index(), ufl.Index(), ufl.Index(), ufl.Index()
+        gradpsi = ufl.as_tensor(psi.dx(i), (i))
+        ddpsi = self.CovD01(gradpsi)
+        LBpsi = self.gab[i,j] * ddpsi[i,j]
+        return LBpsi
+
     def dotgrad(self, u, v):
         i, j = ufl.Index(), ufl.Index()
         return self.gab[i, j]*u.dx(i)*v.dx(j)
@@ -288,7 +296,7 @@ class GeoMap:
         return integrand*self.sqrt_g*self.dS_ref
 
     def coords(self):
-        # Doesn't work for some periodic problems
+        # NOTE: Doesn't work for geometris that are periodic in 3d
         x = self.get_function("x")
         y = self.get_function("y")
         z = self.get_function("z")

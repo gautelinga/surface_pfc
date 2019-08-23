@@ -15,8 +15,7 @@ def dump_xdmf(f, folder=""):
         xdmff.write(f)
 
 
-def dump_coords(geo_map, folder=""):
-    name = "xyz"
+def dump_coords(geo_map, folder="", name="xyz"):
     filename = os.path.join(folder, "{}.xdmf".format(name))
     xyz = geo_map.coords()
     with df.XDMFFile(mpi_comm(), filename) as xdmff:
