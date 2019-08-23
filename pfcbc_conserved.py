@@ -14,7 +14,7 @@ parameters = dict(
     #R=10*np.sqrt(2),  # Radius
     R=4*np.sqrt(2),  # Radius
     #res=140,  # Resolution
-    res=200,  # Resolution
+    res=100,  # Resolution
     dt=1e-1,
     tau=0.2,
     h=1.1,
@@ -41,17 +41,18 @@ tau = parameters["tau"]
 h = df.Constant(parameters["h"])
 M = parameters["M"]
 
-#geo_map = EllipsoidMap(0.75*R, 0.75*R, 1.25*R)
+# geo_map = EllipsoidMap(0.75*R, 0.75*R, 1.25*R)
 geo_map = CylinderMap(R, 2*np.pi*R)
 geo_map.initialize(res, restart_folder=parameters["restart_folder"])
 
 # Initialize the Method of Manufactured Solutions:
-psi_mms_input = (sp.sin(geo_map.s/sp.sqrt(2)))**2 + (sp.sin(geo_map.t/sp.sqrt(2)))**2 # Note that the Initial Condition must also be separately specified.
+psi_mms_input = ((sp.sin(geo_map.s/sp.sqrt(2)))**2
+                 + (sp.sin(geo_map.t/sp.sqrt(2)))**2)
+# Note that the Initial Condition must also be separately specified.
 my_mms = ManufacturedSolution(geo_map, psi_mms_input)
-my_mms.initialize_fields()
-psiMMS = my_mms.psi
-nuMMS =  my_mms.laplacian
-nuhatMMS =  my_mms.curvplacian
+psiMMS = my_mms.psi()
+nuMMS = my_mms.laplacian()
+nuhatMMS = my_mms.curvplacian()
 
 W = geo_map.mixed_space((geo_map.ref_el,)*4)
 
@@ -98,10 +99,10 @@ m_NLMMS = (1 + geo_map.K * h**2/12) * dw_linMMS * xi
 m_0MMS = 4 * nuMMS * xi - 4 * geo_map.gab[i, j]*nuMMS.dx(i)*xi.dx(j)
 
 m_2MMS = (2 * (geo_map.H * nuhatMMS - geo_map.K * nuMMS)*xi
-       - 4 * geo_map.Kab[i, j]*nuhatMMS.dx(i)*xi.dx(j)
-       + 5 * geo_map.K * geo_map.gab[i, j] * nuMMS.dx(i)*xi.dx(j)
-       - 2 * geo_map.H * (geo_map.gab[i, j]*nuhatMMS.dx(i)*xi.dx(j)
-                          + geo_map.Kab[i, j]*nuMMS.dx(i)*xi.dx(j)))/3
+          - 4 * geo_map.Kab[i, j]*nuhatMMS.dx(i)*xi.dx(j)
+          + 5 * geo_map.K * geo_map.gab[i, j] * nuMMS.dx(i)*xi.dx(j)
+          - 2 * geo_map.H * (geo_map.gab[i, j]*nuhatMMS.dx(i)*xi.dx(j)
+                             + geo_map.Kab[i, j]*nuMMS.dx(i)*xi.dx(j)))/3
 
 mMMS = m_NLMMS + m_0MMS + h**2 * m_2MMS
 
@@ -109,10 +110,10 @@ mMMS = m_NLMMS + m_0MMS + h**2 * m_2MMS
 m_NL = F_psi_NL = (1 + geo_map.K * h**2/12) * dw_lin * xi
 m_0 = 4 * nu * xi - 4 * geo_map.gab[i, j]*nu.dx(i)*xi.dx(j)
 m_2 = (2 * (geo_map.H * nuhat - geo_map.K*nu)*xi
-        - 4 * geo_map.Kab[i, j]*nuhat.dx(i)*xi.dx(j)
-        + 5 * geo_map.K * geo_map.gab[i, j]*nu.dx(i)*xi.dx(j)
-        - 2 * geo_map.H * (geo_map.gab[i, j]*nuhat.dx(i)*xi.dx(j)
-                           + geo_map.Kab[i, j]*nu.dx(i)*xi.dx(j)))/3
+       - 4 * geo_map.Kab[i, j]*nuhat.dx(i)*xi.dx(j)
+       + 5 * geo_map.K * geo_map.gab[i, j]*nu.dx(i)*xi.dx(j)
+       - 2 * geo_map.H * (geo_map.gab[i, j]*nuhat.dx(i)*xi.dx(j)
+                          + geo_map.Kab[i, j]*nu.dx(i)*xi.dx(j)))/3
 m = m_NL + m_0 + h**2 * m_2
 
 F_psi = geo_map.form(1/dt * (psi - psi_1) * chi

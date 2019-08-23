@@ -296,6 +296,7 @@ class GeoMap:
         return integrand*self.sqrt_g*self.dS_ref
 
     def coords(self):
+        # NOTE: Doesn't work for geometris that are periodic in 3d
         x = self.get_function("x")
         y = self.get_function("y")
         z = self.get_function("z")
@@ -317,9 +318,6 @@ class GeoMap:
             [df.Point(self.t_min, self.s_min),
              df.Point(self.t_max, self.s_max)],
             [N*res, res], df.cpp.mesh.CellType.Type.triangle)
-        import matplotlib.pyplot as plt
-        #df.plot(ref_mesh)
-        #plt.show()
         self.ref_mesh = ref_mesh
 
     def recompute_mesh(self, res):
@@ -353,6 +351,9 @@ class GeoMap:
                                 self.S_ref)
         local_area.rename("localarea", "tmp")
         return local_area
+
+    def is_periodic_in_3d(self):
+        return False
 
 
 class EllipsoidMap(GeoMap):
@@ -418,7 +419,7 @@ class SphereMap(EllipsoidMap):
 
 
 class CylinderMap(GeoMap):
-    def __init__(self, R, L):
+    def __init__(self, R, L, double_periodic=True):
         t, s = sp.symbols('t s')
         x = R * sp.cos(t/R)
         y = R * sp.sin(t/R)
@@ -433,12 +434,17 @@ class CylinderMap(GeoMap):
         xyz = (x, y, z)
         ts_min = (t_min, s_min)
         ts_max = (t_max, s_max)
+        self.double_periodic = double_periodic
         GeoMap.__init__(self, xyz, ts, ts_min, ts_max)
 
     def compute_pbc(self):
         ts_min = (self.t_min, self.s_min)
         ts_max = (self.t_max, self.s_max)
-        self.pbc = CylinderPBC(ts_min, ts_max, True) # Double periodic
+        self.pbc = CylinderPBC(ts_min, ts_max,
+                               double_periodic=self.double_periodic)
+
+    def is_periodic_in_3d(self):
+        return self.double_periodic
 
 
 class GaussianBumpMap(GeoMap):
