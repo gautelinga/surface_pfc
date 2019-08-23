@@ -77,6 +77,24 @@ class AlongInitialConditions(df.UserExpression):
     def value_shape(self):
         return (self.size,)
 
+# Class representing the intial conditions for manufactured solution
+class MMSInitialConditions(df.UserExpression):
+    def __init__(self, u_, geo_map, **kwargs):
+        random.seed(2 + mpi_rank())
+        self.size = len(u_)
+        self.map = geo_map
+        super().__init__(**kwargs)
+
+    def eval(self, values, x):
+        for i in range(self.size):
+            values[i] = 0.0
+        #values[0] = 0.5*np.sin(x[0]/np.sqrt(2))
+        #values[0] = self.map.psiMMS
+        values[0] = (np.sin(x[1]/np.sqrt(2)))**2 + (np.sin(x[0]/np.sqrt(2)))**2
+
+    def value_shape(self):
+        return (self.size,)
+
 class QuarticPotential:
     def __init__(self):
         Psi, Tau = sp.symbols('psi tau')
