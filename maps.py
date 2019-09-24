@@ -529,6 +529,33 @@ class SphereMap(EllipsoidMap):
     def __init__(self, R):
         EllipsoidMap.__init__(self, R, R, R)
 
+class CylinderMap(GeoMap):
+    def __init__(self, R, L, double_periodic=True):
+        t, s = sp.symbols('t s', real=True)
+        x = R * sp.cos(t/R)
+        y = R * sp.sin(t/R)
+        z = s
+
+        t_min = 0.
+        t_max = 2*np.pi*R
+        s_min = 0.
+        s_max = L
+
+        ts = (t, s)
+        xyz = (x, y, z)
+        ts_min = (t_min, s_min)
+        ts_max = (t_max, s_max)
+        self.double_periodic = double_periodic
+        GeoMap.__init__(self, xyz, ts, ts_min, ts_max)
+
+    def compute_pbc(self):
+        ts_min = (self.t_min, self.s_min)
+        ts_max = (self.t_max, self.s_max)
+        self.pbc = CylinderPBC(ts_min, ts_max,
+                               double_periodic=self.double_periodic)
+
+    def is_periodic_in_3d(self):
+        return self.double_periodic
 
 class GaussianBumpMap(GeoMap):
     def __init__(self, Lx, Ly, h, sigma):
