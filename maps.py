@@ -334,13 +334,29 @@ class GeoMap:
         return integrand*self.sqrt_g*self.dS_ref
 
     def coords(self):
-        # NOTE: Doesn't work for geometris that are periodic in 3d
+        # NOTE: Doesn't work for geometries that are periodic in 3d
         x = self.get_function("x")
         y = self.get_function("y")
         z = self.get_function("z")
         xyz = NdFunction([x, y, z], name="xyz")
         xyz()
         return xyz
+
+    def metric_tensor(self):
+        gtt = self.get_function("gtt")
+        gst = self.get_function("gst")
+        gss = self.get_function("gss")
+        g = NdFunction([gtt, gst, gss], name="g")
+        g()
+        return g
+
+    def metric_tensor_inv(self):
+        g_tt = self.get_function("g_tt")
+        g_st = self.get_function("g_st")
+        g_ss = self.get_function("g_ss")
+        g_inv = NdFunction([g_tt, g_st, g_ss], name="g_inv")
+        g_inv()
+        return g_inv
 
     def get_curvaturematrix(self):
         Kt_t = self.get_function("Kt_t")
@@ -427,9 +443,6 @@ class GeoMap:
             [df.Point(self.t_min, self.s_min),
              df.Point(self.t_max, self.s_max)],
             [N*res, res], df.cpp.mesh.CellType.Type.triangle)
-        import matplotlib.pyplot as plt
-        #df.plot(ref_mesh)
-        #plt.show()
         self.ref_mesh = ref_mesh
 
     def recompute_mesh(self, res):

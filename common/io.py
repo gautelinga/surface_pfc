@@ -36,6 +36,25 @@ def dump_coords(geo_map, folder="", name="xyz"):
             xyz[:, :] = xyz_new
 
 
+def dump_metric_tensor(geo_map, folder="", name="g"):
+    filename = os.path.join(folder, "{}.xdmf".format(name))
+    g = geo_map.metric_tensor()
+    with df.XDMFFile(mpi_comm(), filename) as xdmff:
+        xdmff.parameters["rewrite_function_mesh"] = False
+        xdmff.parameters["flush_output"] = True
+        xdmff.write(g)
+
+
+def dump_metric_tensor_inv(geo_map, folder="", name="g_inv"):
+    # Is it necessary to dump both?
+    filename = os.path.join(folder, "{}.xdmf".format(name))
+    g_inv = geo_map.metric_tensor_inv()
+    with df.XDMFFile(mpi_comm(), filename) as xdmff:
+        xdmff.parameters["rewrite_function_mesh"] = False
+        xdmff.parameters["flush_output"] = True
+        xdmff.write(g_inv)
+
+
 def makedirs_safe(folder):
     """ Make directory in a safe way. """
     if mpi_is_root() and not os.path.exists(folder):
@@ -102,6 +121,8 @@ class Timeseries:
         geofolder = os.path.join(self.folder, "Geometry")
         dump_coords(geo_map, folder=geofolder)
         dump_xdmf(geo_map.normal(), folder=geofolder)
+        dump_metric_tensor(geo_map, folder=geofolder)
+        dump_metric_tensor_inv(geo_map, folder=geofolder)
 
         self.files = dict()
         for field in self.fields:

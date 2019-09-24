@@ -65,6 +65,17 @@ def numpy_to_dolfin(nodes, elements):
     return mesh
 
 
+def unpack_fields(folder, xdmffile):
+    if os.path.exists(os.path.join(folder, xdmffile)):
+        (_, _, A_address, _, _, A_shape, _, _) = parse_xyz_xdmf(
+            os.path.join(folder, xdmffile))
+        with h5py.File(os.path.join(folder, A_address[0]), "r") as h5f:
+            A = np.array(h5f[A_address[1]])
+        return A
+    else:
+        return None
+
+
 class InterpolatedTimeSeries:
     """ Class for loading timeseries """
     def __init__(self, folder, sought_fields=None, memory_modest=True):
@@ -140,6 +151,9 @@ class InterpolatedTimeSeries:
         with h5py.File(os.path.join(self.geometry_folder,
                                     geometry_address[0]), "r") as h5f:
             self.nodes = np.array(h5f[geometry_address[1]])
+
+        self.g = unpack_fields(self.geometry_folder, "g.xdmf")
+        self.g_inv = unpack_fields(self.geometry_folder, "g_inv.xdmf")
 
         data = dict()
         for params_file in glob.glob(
