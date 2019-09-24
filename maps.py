@@ -77,6 +77,7 @@ class GeoMap:
         self.map["g_st_t"] = sp.simplify(sp.diff(self.map["g_st"], self.t))
         self.map["g_tt_s"] = sp.simplify(sp.diff(self.map["g_tt"], self.s))
         self.map["g_tt_t"] = sp.simplify(sp.diff(self.map["g_tt"], self.t))
+        print("Metric computed")
 
         # The normal
         cross_x = sp.simplify(
@@ -102,7 +103,7 @@ class GeoMap:
         self.map["K_tt"] = sp.simplify(self.map["nx"]*self.map["xtt"]
                                        + self.map["ny"]*self.map["ytt"]
                                        + self.map["nz"]*self.map["ztt"])
-
+        print('K_ij computed, computing K^i_j ... ')
         self.map["Ks_s"] = sp.simplify(self.map["gss"]*self.map["K_ss"]
                                        + self.map["gst"]*self.map["K_ts"])
         self.map["Ks_t"] = sp.simplify(self.map["gss"]*self.map["K_st"]
@@ -111,41 +112,60 @@ class GeoMap:
                                        + self.map["gtt"]*self.map["K_ts"])
         self.map["Kt_t"] = sp.simplify(self.map["gst"]*self.map["K_st"]
                                        + self.map["gtt"]*self.map["K_tt"])
-
-        self.map["Kss"] = sp.simplify(self.map["gss"]*self.map["Ks_s"]
+        print('K^i_j computed, computing K^ij ... ')
+        
+        # Skipping "simplify" because it is exceedingly slow:
+        self.map["Kss"] = (self.map["gss"]*self.map["Ks_s"]
                                       + self.map["gst"]*self.map["Ks_t"])
-        self.map["Kst"] = sp.simplify(self.map["gst"]*self.map["Ks_s"]
+        self.map["Kst"] = (self.map["gst"]*self.map["Ks_s"]
                                       + self.map["gtt"]*self.map["Ks_t"])
-        self.map["Kts"] = sp.simplify(self.map["gss"]*self.map["Kt_s"]
+        self.map["Kts"] = (self.map["gss"]*self.map["Kt_s"]
                                       + self.map["gst"]*self.map["Kt_t"])
-        self.map["Ktt"] = sp.simplify(self.map["gst"]*self.map["Kt_s"]
+        self.map["Ktt"] = (self.map["gst"]*self.map["Kt_s"]
                                       + self.map["gtt"]*self.map["Kt_t"])
+        print('K^ij computed.')
+        # Curvature tensor K^i_j as a matrix
+        self.map["Kmat"] = sp.Matrix([[self.map["Kt_t"],self.map["Kt_s"]], [self.map["Kt_s"],self.map["Ks_s"]]])
+        # self.map["Keigenvects"] = self.map["Kmat"].eigenvects()
+        # self.map["Keigenvals"] = self.map["Kmat"].eigenvals()
+        # # Save principal curvatures and principal directions:
+        # self.map["k1"] = self.map["Keigenvects"][0][0]
+        # self.map["u1"] = self.map["Keigenvects"][0][2][0]
+        # self.map["u1t"] = self.map["u1"][0]
+        # self.map["u1s"] = self.map["u1"][1]
+        # self.map["k2"] = self.map["Keigenvects"][1][0]
+        # self.map["u2"] = self.map["Keigenvects"][1][2][0]
+        # self.map["u2t"] = self.map["u2"][0]
+        # self.map["u2s"] = self.map["u2"][1]
+        print("Curvature tensor computed")
 
-        # Mean and Gaussian curvature
-        self.map["H"] = sp.simplify((self.map["Ks_s"] + self.map["Kt_t"])/2)
-        self.map["K"] = sp.simplify(self.map["Ks_s"]*self.map["Kt_t"]
+        # Mean and Gaussian curvature (no simplify, too heavy)
+        print('Computing scalar curvatures ...')
+        self.map["H"] = ((self.map["Ks_s"] + self.map["Kt_t"])/2)
+        self.map["K"] = (self.map["Ks_s"]*self.map["Kt_t"]
                                     - self.map["Ks_t"]*self.map["Kt_s"])
 
+        print('Computing Christoffel symbols ...')
         # Christoffel symbols
-        self.map["Gs_ss"] = sp.simplify((
+        self.map["Gs_ss"] = ((
             self.map["gss"]*self.map["g_ss_s"]
             + self.map["gst"]*(
                 2*self.map["g_st_s"]-self.map["g_ss_t"]))/2)
-        self.map["Gs_st"] = sp.simplify((
+        self.map["Gs_st"] = ((
             self.map["gss"]*self.map["g_ss_t"]
             + self.map["gst"]*self.map["g_tt_s"])/2)
-        self.map["Gs_tt"] = sp.simplify((
+        self.map["Gs_tt"] = ((
             self.map["gss"]*(
                 2*self.map["g_st_t"] - self.map["g_tt_s"])
             + self.map["gst"]*self.map["g_tt_t"])/2)
-        self.map["Gt_ss"] = sp.simplify((
+        self.map["Gt_ss"] = ((
             self.map["gtt"]*(
                 2*self.map["g_st_s"] - self.map["g_ss_t"])
             + self.map["gst"]*self.map["g_ss_s"])/2)
-        self.map["Gt_st"] = sp.simplify((
+        self.map["Gt_st"] = ((
             self.map["gtt"]*self.map["g_tt_s"]
             + self.map["gst"]*self.map["g_ss_t"])/2)
-        self.map["Gt_tt"] = sp.simplify((
+        self.map["Gt_tt"] = ((
             self.map["gtt"]*self.map["g_tt_t"]
             + self.map["gst"]*(
                 2*self.map["g_st_t"]-self.map["g_tt_s"]))/2)
@@ -211,6 +231,20 @@ class GeoMap:
         self.Ks_t = self.get_function("Ks_t")
         self.Ks_s = self.get_function("Ks_s")
 
+        # Curvature tensor as matrix
+        #self.Kmat = self.get_function("Kmat")
+
+        # Principal curvatures and directions:
+        # self.k1 = self.get_function("k1")
+        # self.k2 = self.get_function("k2")
+        # self.u1t = self.get_function("u1t")
+        # self.u1s = self.get_function("u1s")
+        # self.u1 = ufl.as_tensor([[self.u1t],
+        #                           [self.u1s]])
+        # self.u2t = self.get_function("u2t")
+        # self.u2s = self.get_function("u2s")
+        # self.u2 = ufl.as_tensor([[self.u2t],
+        #                           [self.u2s]])
         self.K = self.get_function("K")
         self.H = self.get_function("H")
 
@@ -304,6 +338,77 @@ class GeoMap:
         xyz()
         return xyz
 
+    def get_curvaturematrix(self):
+        Kt_t = self.get_function("Kt_t")
+        Kt_s = self.get_function("Kt_s")
+        Ks_t = self.get_function("Ks_t")
+        Ks_s = self.get_function("Ks_s")
+
+        Kt_t_arr = Kt_t.vector().get_local()
+        Kt_s_arr = Kt_s.vector().get_local()
+        Ks_t_arr = Ks_t.vector().get_local()
+        Ks_s_arr = Ks_s.vector().get_local()
+
+        kappa1_arr = Ks_s.vector().get_local() # Fiducial initiation
+        kappa2_arr = Ks_s.vector().get_local() # Fiducial initiation
+        u1t_arr = Ks_s.vector().get_local() # Fiducial initiation
+        u1s_arr = Ks_s.vector().get_local() # Fiducial initiation
+        u2t_arr = Ks_s.vector().get_local() # Fiducial initiation
+        u2s_arr = Ks_s.vector().get_local() # Fiducial initiation
+        theta1_arr = Ks_s.vector().get_local() # Fiducial initiation
+        theta2_arr = Ks_s.vector().get_local() # Fiducial initiation
+
+        i = 0
+        for Kt_t_loc, Kt_s_loc, Ks_t_loc, Ks_s_loc in zip(Kt_t_arr, Kt_s_arr, Ks_t_arr, Ks_s_arr):
+            try:
+                Kmat_loc = np.array([[Kt_t_loc,Kt_s_loc],[Ks_t_loc,Ks_s_loc]])
+                kappa_loc, u_loc = np.linalg.eig(Kmat_loc)
+                # Possible orderings of curvatures:
+                # Absolute curvature: Gives discontinuous kappa_i, but is useful
+                # when only the most curved direction is relevant.
+                # Signed curvature: Gives continuous kappa_i, but places emphasis
+                # on something rather irrelevant, namly the sign of the curvature.
+                #if abs(kappa_loc[0]) > abs(kappa_loc[1]):
+                if kappa_loc[0] > kappa_loc[1]:
+                    kappa1_arr[i] = kappa_loc[0]
+                    kappa2_arr[i] = kappa_loc[1]
+                    u1t_arr[i] = u_loc[0,0]
+                    u1s_arr[i] = u_loc[1,0]
+                    u2t_arr[i] = u_loc[0,1]
+                    u2s_arr[i] = u_loc[1,1]
+                else:
+                    kappa1_arr[i] = kappa_loc[1]
+                    kappa2_arr[i] = kappa_loc[0]
+                    u1t_arr[i] = u_loc[0,1]
+                    u1s_arr[i] = u_loc[1,1]
+                    u2t_arr[i] = u_loc[0,0]
+                    u2s_arr[i] = u_loc[1,0]
+                theta1_arr[i] = np.arctan2(u1s_arr[i],u1t_arr[i])
+                theta2_arr[i] = np.arctan2(u2s_arr[i],u2t_arr[i])
+            except:
+                kappa1_arr[i] = 0
+                kappa2_arr[i] = 0
+
+                u1t_arr[i] = 0
+                u1s_arr[i] = 0
+                u2t_arr[i] = 0
+                u2s_arr[i] = 0
+
+                theta1_arr[i] = 0
+                theta2_arr[i] = 0
+            i += 1
+        kappa1 = df.Function(self.S_ref)
+        kappa1.vector().set_local(kappa1_arr)
+        kappa2 = df.Function(self.S_ref)
+        kappa2.vector().set_local(kappa2_arr)
+
+        theta1 = df.Function(self.S_ref)
+        theta1.vector().set_local(theta1_arr)
+        theta2 = df.Function(self.S_ref)
+        theta2.vector().set_local(theta2_arr)
+
+        return kappa1, kappa2, theta1, theta2
+
     def normal(self):
         nx = self.get_function("nx")
         ny = self.get_function("ny")
@@ -357,11 +462,11 @@ class GeoMap:
 
     def is_periodic_in_3d(self):
         return False
-    
+
 
 class EllipsoidMap(GeoMap):
     def __init__(self, Rx, Ry, Rz):
-        t, s = sp.symbols('t s')
+        t, s = sp.symbols('t s', real=True)
         x = Rx * sp.cos(t) * sp.sin(s)
         y = Ry * sp.sin(t) * sp.sin(s)
         z = Rz * sp.cos(s)
@@ -423,7 +528,7 @@ class SphereMap(EllipsoidMap):
 
 class CylinderMap(GeoMap):
     def __init__(self, R, L, double_periodic=True):
-        t, s = sp.symbols('t s')
+        t, s = sp.symbols('t s', real=True)
         x = R * sp.cos(t/R)
         y = R * sp.sin(t/R)
         z = s
@@ -452,7 +557,7 @@ class CylinderMap(GeoMap):
 
 class GaussianBumpMap(GeoMap):
     def __init__(self, Lx, Ly, h, sigma):
-        t, s = sp.symbols('t s')
+        t, s = sp.symbols('t s', real=True)
         x = t
         y = s
         z = h * sp.exp(-((t-Lx/2)**2+(s-Ly/2)**2)/(2*sigma**2))

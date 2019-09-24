@@ -1,5 +1,5 @@
 import dolfin as df
-from maps import EllipsoidMap, CylinderMap
+from maps import EllipsoidMap, CylinderMap, GaussianBumpMap
 from common.io import Timeseries, save_checkpoint, load_checkpoint, \
     load_parameters
 from common.cmd import mpi_max, parse_command_line
@@ -11,10 +11,10 @@ from common.MMS import ManufacturedSolution
 import sympy as sp
 
 parameters = dict(
-    #R=10*np.sqrt(2),  # Radius
-    R=4*np.sqrt(2),  # Radius
+    R=10*np.sqrt(2),  # Radius
+    #R=4*np.sqrt(2),  # Radius
     #res=140,  # Resolution
-    res=100,  # Resolution
+    res=200,  # Resolution
     dt=1e-1,
     tau=0.2,
     h=1.1,
@@ -41,13 +41,13 @@ tau = parameters["tau"]
 h = df.Constant(parameters["h"])
 M = parameters["M"]
 
-# geo_map = EllipsoidMap(0.75*R, 0.75*R, 1.25*R)
-geo_map = CylinderMap(R, 2*np.pi*R)
+#geo_map = EllipsoidMap(R, R, R)
+geo_map = GaussianBumpMap(7*R,7*R,2*R,R)
+#geo_map = CylinderMap(R, 2*np.pi*R)
 geo_map.initialize(res, restart_folder=parameters["restart_folder"])
 
 # Initialize the Method of Manufactured Solutions:
-psi_mms_input = ((sp.sin(geo_map.s/sp.sqrt(2)))**2
-                 + (sp.sin(geo_map.t/sp.sqrt(2)))**2)
+psi_mms_input = ((sp.sin(geo_map.s/sp.sqrt(2)))**2 + (sp.sin(geo_map.t/sp.sqrt(2)))**2)
 # Note that the Initial Condition must also be separately specified.
 my_mms = ManufacturedSolution(geo_map, psi_mms_input)
 psiMMS = my_mms.psi()

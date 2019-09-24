@@ -15,25 +15,8 @@ class ManufacturedSolution:
 
     def initialize(self):
         # Manufactured solution:
+        print("Computing Manufactured Solution.")
         self.map["psi"] = self.f
-        self.map["nu"] = (
-            self.geodict["gtt"] * sp.diff(self.f, self.t, self.t)
-            + 2 * self.geodict["gst"] * sp.diff(self.f,
-                                                self.s, self.t)
-            + self.geodict["gss"] * sp.diff(self.f, self.s, self.s)
-            + (1/self.geodict["sqrt_g"]) * (
-                self.geodict["gtt"]
-                * sp.diff(self.geodict["sqrt_g"], self.t)
-                * sp.diff(self.f, self.t)
-                + self.geodict["gst"]
-                * sp.diff(self.geodict["sqrt_g"], self.t)
-                * sp.diff(self.f, self.s)
-                + self.geodict["gst"]
-                * sp.diff(self.geodict["sqrt_g"], self.s)
-                * sp.diff(self.f, self.t)
-                + self.geodict["gss"]
-                * sp.diff(self.geodict["sqrt_g"], self.s)
-                * sp.diff(self.f, self.s)))
         self.map["nuhat"] = (
             self.geodict["Ktt"] * sp.diff(self.f, self.t, self.t)
             + 2 * self.geodict["Kts"] * sp.diff(self.f,
@@ -52,11 +35,37 @@ class ManufacturedSolution:
             - self.geodict["Kss"]
             * self.geodict["Gs_ss"] * sp.diff(self.f, self.s)
         )
+        self.map["nu"] = (
+            self.geodict["gtt"] * sp.diff(self.f, self.t, self.t)
+            + 2 * self.geodict["gst"] * sp.diff(self.f,
+                                                self.s, self.t)
+            + self.geodict["gss"] * sp.diff(self.f, self.s, self.s)
+            + (1/self.geodict["sqrt_g"]) * (
+                self.geodict["gtt"]
+                * sp.diff(self.geodict["sqrt_g"], self.t)
+                * sp.diff(self.f, self.t)
+                + self.geodict["gst"]
+                * sp.diff(self.geodict["sqrt_g"], self.t)
+                * sp.diff(self.f, self.s)
+                + self.geodict["gst"]
+                * sp.diff(self.geodict["sqrt_g"], self.s)
+                * sp.diff(self.f, self.t)
+                # A problem occurs in the following THREE lines of code (when run for EllipsoidMap)!
+                + self.geodict["gss"]
+                * sp.diff(self.geodict["sqrt_g"], self.s) # This line is the problem
+                * sp.diff(self.f, self.s)
+                )
+            )
 
         self.evalf = dict()
         for key in self.map.keys():
-            self.evalf[key] = sp.lambdify([self.t, self.s],
-                                          self.map[key], "numpy")
+            try:
+                self.evalf[key] = sp.lambdify([self.t, self.s], self.map[key], "numpy")
+            except:
+                simp = self.map[key].doit()
+                print("Lamdify failed for key: ", key)
+                print("With expression:", simp)
+                exit()
 
     def eval(self, key):
         v = self.evalf[key](self.geo_map.t_vals,
