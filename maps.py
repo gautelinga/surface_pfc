@@ -113,7 +113,7 @@ class GeoMap:
         self.map["Kt_t"] = sp.simplify(self.map["gst"]*self.map["K_st"]
                                        + self.map["gtt"]*self.map["K_tt"])
         print('K^i_j computed, computing K^ij ... ')
-        
+
         # Skipping "simplify" because it is exceedingly slow:
         self.map["Kss"] = (self.map["gss"]*self.map["Ks_s"]
                                       + self.map["gst"]*self.map["Ks_t"])
@@ -317,6 +317,10 @@ class GeoMap:
         ddpsi = self.CovD01(gradpsi)
         LBpsi = self.gab[i, j] * ddpsi[i, j]
         return LBpsi
+
+    def surfdot(self, u, v):
+        i, j = ufl.Index(), ufl.Index()
+        return self.gab[i, j]*u[i]*v[j]
 
     def dotgrad(self, u, v):
         i, j = ufl.Index(), ufl.Index()
@@ -526,49 +530,52 @@ class SphereMap(EllipsoidMap):
         EllipsoidMap.__init__(self, R, R, R)
 
 
-class CylinderMap(GeoMap):
-    def __init__(self, R, L, double_periodic=True):
-        t, s = sp.symbols('t s', real=True)
-        x = R * sp.cos(t/R)
-        y = R * sp.sin(t/R)
-        z = s
-
-        t_min = 0.
-        t_max = 2*np.pi*R
-        s_min = 0.
-        s_max = L
-
-        ts = (t, s)
-        xyz = (x, y, z)
-        ts_min = (t_min, s_min)
-        ts_max = (t_max, s_max)
-        self.double_periodic = double_periodic
-        GeoMap.__init__(self, xyz, ts, ts_min, ts_max)
-
-    def compute_pbc(self):
-        ts_min = (self.t_min, self.s_min)
-        ts_max = (self.t_max, self.s_max)
-        self.pbc = CylinderPBC(ts_min, ts_max,
-                               double_periodic=self.double_periodic)
-
-    def is_periodic_in_3d(self):
-        return self.double_periodic
-
-
 class GaussianBumpMap(GeoMap):
     def __init__(self, Lx, Ly, h, sigma):
         t, s = sp.symbols('t s', real=True)
         x = t
         y = s
-        z = h * sp.exp(-((t-Lx/2)**2+(s-Ly/2)**2)/(2*sigma**2))
+        z = h * sp.exp(-(t**2+s**2)/(2*sigma**2))
 
-        t_min = 0.
-        t_max = Lx
-        s_min = 0.
-        s_max = Ly
+        t_min = -Lx/2
+        t_max = Lx/2
+        s_min = -Ly/2
+        s_max = Ly/2
 
         ts = (t, s)
         xyz = (x, y, z)
         ts_min = (t_min, s_min)
         ts_max = (t_max, s_max)
         GeoMap.__init__(self, xyz, ts, ts_min, ts_max)
+    def compute_mesh(self, res):
+        import mshr
+        print("Using overloaded compute_mesh for GaussianBump")
+        N = int(np.ceil((self.t_max-self.t_min)/(self.s_max-self.s_min)))
+        rect = mshr.Rectangle(df.Point(self.t_min, self.s_min), df.Point(self.t_max, self.s_max))
+        ref_mesh = mshr.generate_mesh(rect, res, "cgal")
+        self.ref_mesh = ref_mesh
+
+class SaddleMap(GeoMap):
+    def __init__(self, Lx, Ly, a, b):
+        t, s = sp.symbols('t s', real=True)
+        x = t
+        y = s
+        z = a*t**2-b*s**2
+
+        t_min = -Lx/2
+        t_max = Lx/2
+        s_min = -Lx/2
+        s_max = Lx/2
+
+        ts = (t, s)
+        xyz = (x, y, z)
+        ts_min = (t_min, s_min)
+        ts_max = (t_max, s_max)
+        GeoMap.__init__(self, xyz, ts, ts_min, ts_max)
+
+    def compute_mesh(self, res):
+        import mshr
+        print("Using overloaded compute_mesh for Saddle geometry")
+        rect = mshr.Rectangle(df.Point(self.t_min, self.s_min), df.Point(self.t_max, self.s_max))
+        ref_mesh = mshr.generate_mesh(rect, res, "cgal")
+        self.ref_mesh = ref_mesh
