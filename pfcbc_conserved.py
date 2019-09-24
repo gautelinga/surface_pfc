@@ -163,27 +163,28 @@ ts.add_scalar_field(df.sqrt(geo_map.gab[i, j]*mu_.dx(i)*mu_.dx(j)),
 
 # Step in time
 ts.dump(tstep)
+dt_max = 20
 
 while t < T:
     tstep += 1
     t += float(dt.values())
 
     u_1.assign(u_)
+    initial_noise = 0 # Usually O(1).
+    u_1.vector()[:] += np.random.normal(0,initial_noise/(1+0.02*t),len(u_1.vector().get_local())) # Annealing noise
     solver.solve()
 
     if tstep % 1 == 0:
         # ts.dump(tstep)
         ts.dump(t)
         E_0 = (2*nu_**2 - 2 * geo_map.gab[i, j]*psi_.dx(i)*psi_.dx(j) + w(psi_, tau))
-        #E_nonK = df.assemble(geo_map.form(geo_map.sqrt_g*(2*nu_**2-2*geo_map.gab[i,j]*psi_.dx(i)*psi_.dx(j) + (tau/2) * psi_**2 + (1/4) *psi_**4))) # Double checked for correctness
         E_nonK = df.assemble(geo_map.form(E_0))
         E_K = df.assemble(geo_map.form((h**2/12)*(2*(4*nuhat_**2 + 4*H*nuhat_*nu_ - 5*K*nu_**2) - 2 * (2*H*nuhat_ - 2*K*gab[i,j]*psi_.dx(i)*psi_.dx(j)) + (tau/2)*K*psi_**2 + (1/4)*K*psi_**4))) # Double checked for correctness
-        # if tstep > 20:
-        #     dh = 0.001
-        #     h.assign(max(0,float(h.values())-dh))
-        #     #dt.assign(0.0001)
         grad_mu = ts.get_function("abs_grad_mu")
         grad_mu_max = mpi_max(grad_mu.vector().get_local())
+        # Assigning timestep size according to grad_mu_max:
+        dt.assign(min(dt_max,max(0.5,0.5/grad_mu_max)))
+        print(float(dt.values()))
         ts.dump_stats(t, [grad_mu_max, float(dt.values()), float(h.values()), E_nonK, E_K], "data")
 
     if tstep % parameters["checkpoint_intv"] == 0 or t >= T:
