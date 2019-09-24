@@ -3,7 +3,8 @@ from maps import EllipsoidMap, CylinderMap, GaussianBumpMap
 from common.io import Timeseries, save_checkpoint, load_checkpoint, \
     load_parameters
 from common.cmd import mpi_max, parse_command_line
-from common.utilities import RandomInitialConditions, QuarticPotential, AroundInitialConditions, AlongInitialConditions, MMSInitialConditions
+from common.utilities import RandomInitialConditions, QuarticPotential, \
+    AroundInitialConditions, AlongInitialConditions, MMSInitialConditions
 import os
 import ufl
 import numpy as np
