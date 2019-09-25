@@ -35,7 +35,6 @@ class NdFunction(df.Function):
 # Class representing the intial conditions.
 class RandomInitialConditions(df.UserExpression):
     def __init__(self, u_, **kwargs):
-        random.seed(2 + mpi_rank())
         self.size = len(u_)
         super().__init__(**kwargs)
 
@@ -50,7 +49,6 @@ class RandomInitialConditions(df.UserExpression):
 # Class representing the intial conditions. Wavenumber hardcoded for now.
 class AroundInitialConditions(df.UserExpression):
     def __init__(self, u_, **kwargs):
-        random.seed(2 + mpi_rank())
         self.size = len(u_)
         super().__init__(**kwargs)
 
@@ -65,7 +63,6 @@ class AroundInitialConditions(df.UserExpression):
 # Class representing the intial conditions. Wavenumber hardcoded for now.
 class AlongInitialConditions(df.UserExpression):
     def __init__(self, u_, **kwargs):
-        random.seed(2 + mpi_rank())
         self.size = len(u_)
         super().__init__(**kwargs)
 
@@ -80,7 +77,6 @@ class AlongInitialConditions(df.UserExpression):
 # Class representing the intial conditions for manufactured solution
 class MMSInitialConditions(df.UserExpression):
     def __init__(self, u_, geo_map, **kwargs):
-        random.seed(2 + mpi_rank())
         self.size = len(u_)
         self.map = geo_map
         super().__init__(**kwargs)

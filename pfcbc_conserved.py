@@ -12,7 +12,7 @@ from common.MMS import ManufacturedSolution
 import sympy as sp
 
 parameters = dict(
-    R=10*np.sqrt(2),  # Radius
+    R=20*np.sqrt(2),  # Radius
     #R=4*np.sqrt(2),  # Radius
     #res=140,  # Resolution
     res=200,  # Resolution
@@ -24,7 +24,8 @@ parameters = dict(
     restart_folder=None,
     t_0=0.0,
     tstep=0,
-    T=1e6,
+    #T=1e6,
+    T=100,
     # T=10000.0,
     checkpoint_intv=50,
 )
@@ -74,11 +75,11 @@ psi_1, mu_1, nu_1, nuhat_1 = df.split(u_1)
 
 # Create intial conditions
 if parameters["restart_folder"] is None:
-    #u_init = RandomInitialConditions(u_, degree=1)
+    u_init = RandomInitialConditions(u_, degree=1)
     #u_init = AroundInitialConditions(u_, degree=1)
     #u_init = AlongInitialConditions(u_, degree=1)
     #u_init = AlongInitialConditions(u_, degree=1)
-    u_init = MMSInitialConditions(u_, geo_map, degree=1)
+    #u_init = MMSInitialConditions(u_, geo_map, degree=1)
     u_1.interpolate(u_init)
     u_.assign(u_1)
 else:
@@ -121,8 +122,8 @@ F_psi = geo_map.form(1/dt * (psi - psi_1) * chi
                      + M * geo_map.gab[i, j]*mu.dx(i)*chi.dx(j))
 
 # Enable/disable Manufactured Solution by choosing one of the two lines below:
-#F_mu = geo_map.form(mu*xi - m)
-F_mu = geo_map.form(mu*xi - m + mMMS)
+F_mu = geo_map.form(mu*xi - m)
+#F_mu = geo_map.form(mu*xi - m + mMMS)
 
 F_nu = geo_map.form(nu*eta + geo_map.gab[i, j]*psi.dx(i)*eta.dx(j))
 F_nuhat = geo_map.form(nuhat*etahat + geo_map.Kab[i, j]*psi.dx(i)*etahat.dx(j))
@@ -164,7 +165,7 @@ ts.add_scalar_field(df.sqrt(geo_map.gab[i, j]*mu_.dx(i)*mu_.dx(j)),
 
 # Step in time
 ts.dump(tstep)
-dt_max = 20
+dt_max = 5
 
 while t < T:
     tstep += 1
