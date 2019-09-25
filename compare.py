@@ -3,7 +3,7 @@ from utilities.InterpolatedTimeSeries import InterpolatedTimeSeries
 from utilities.plot import plot_any_field
 from common.io import dump_xdmf
 from postprocess import get_step_and_info
-from fenicstools import interpolate_nonmatching_mesh
+from fenicstools import interpolate_nonmatching_mesh, Probes
 import dolfin as df
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,6 +17,7 @@ def main():
                         help="Sought fields")
     parser.add_argument("-t", "--time", type=float, default=0, help="Time")
     parser.add_argument("--show", action="store_true", help="Show")
+    parser.add_argument("-R", "--radius", type=float, default=None, help="Radial distance")
     args = parser.parse_args()
 
     tss = []
@@ -102,6 +103,38 @@ def main():
         df.plot(costheta)
         plt.show()
 
+    if args.radius is not None and args.radius > 0:
+        Nr, Nphi = 256, 256
+        r_lin = np.linspace(0., args.radius, Nr)
+        phi_lin = np.linspace(0, 2*np.pi, Nphi, endpoint=False)
+        R, Phi = np.meshgrid(r_lin, phi_lin)
+        r = R.reshape((Nr*Nphi, 1))
+        phi = Phi.reshape((Nr*Nphi, 1))
+
+        xy = np.hstack((r*np.cos(phi), r*np.sin(phi)))
+
+        pts = xy.flatten()
+        probes = Probes(pts, ref_spaces["psi"])
+        probes(costheta)
+
+        ct = probes.array()
+        CT = ct.reshape(R.shape)
+
+        g_r = CT.mean(axis=0)
+        g_phi = CT.mean(axis=1)
+        
+        plt.figure()
+        plt.plot(r_lin, g_r)
+        plt.ylabel("g(r)")
+        plt.xlabel("r")
+
+        plt.figure()
+        plt.plot(phi_lin, g_phi)
+        plt.xlabel("phi")
+        plt.ylabel("g(phi)")
+        plt.show()
+        
+        
 
 if __name__ == "__main__":
     main()
