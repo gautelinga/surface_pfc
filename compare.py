@@ -100,7 +100,8 @@ def main():
     dump_xdmf(costheta)
 
     if args.show:
-        df.plot(costheta)
+        fig = df.plot(costheta)
+        plt.colorbar(fig)
         plt.show()
 
     if args.radius is not None and args.radius > 0:
