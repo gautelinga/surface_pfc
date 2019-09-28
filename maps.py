@@ -1,17 +1,18 @@
 import sympy as sp
 import numpy as np
 import dolfin as df
-from bcs import EllipsoidPBC, CylinderPBC
+from bcs import EllipsoidPBC, CylinderPBC, TorusPBC
 from common.mesh_refinement import densified_ellipsoid_mesh
 from common.utilities import NdFunction
 from common.io import load_mesh
-from common.cmd import info_red, info_cyan
+from common.cmd import info_red, info_cyan, info_blue
 import os
 import ufl
+import mshr
 
 
 class GeoMap:
-    def __init__(self, xyz, ts, ts_min, ts_max):
+    def __init__(self, xyz, ts, ts_min, ts_max, verbose=False):
         self.t = ts[0]
         self.s = ts[1]
         self.map = dict()
@@ -22,6 +23,7 @@ class GeoMap:
         self.t_max = ts_max[0]
         self.s_min = ts_min[1]
         self.s_max = ts_max[1]
+        self.verbose = verbose
         self.compute_geometry()
 
     def compute_geometry(self):
@@ -77,7 +79,7 @@ class GeoMap:
         self.map["g_st_t"] = sp.simplify(sp.diff(self.map["g_st"], self.t))
         self.map["g_tt_s"] = sp.simplify(sp.diff(self.map["g_tt"], self.s))
         self.map["g_tt_t"] = sp.simplify(sp.diff(self.map["g_tt"], self.t))
-        print("Metric computed")
+        self.info_verbose("Metric computed")
 
         # The normal
         cross_x = sp.simplify(
@@ -103,7 +105,7 @@ class GeoMap:
         self.map["K_tt"] = sp.simplify(self.map["nx"]*self.map["xtt"]
                                        + self.map["ny"]*self.map["ytt"]
                                        + self.map["nz"]*self.map["ztt"])
-        print('K_ij computed, computing K^i_j ... ')
+        self.info_verbose('K_ij computed, computing K^i_j ... ')
         self.map["Ks_s"] = sp.simplify(self.map["gss"]*self.map["K_ss"]
                                        + self.map["gst"]*self.map["K_ts"])
         self.map["Ks_t"] = sp.simplify(self.map["gss"]*self.map["K_st"]
@@ -112,7 +114,7 @@ class GeoMap:
                                        + self.map["gtt"]*self.map["K_ts"])
         self.map["Kt_t"] = sp.simplify(self.map["gst"]*self.map["K_st"]
                                        + self.map["gtt"]*self.map["K_tt"])
-        print('K^i_j computed, computing K^ij ... ')
+        self.info_verbose('K^i_j computed, computing K^ij ... ')
 
         # Skipping "simplify" because it is exceedingly slow:
         self.map["Kss"] = (self.map["gss"]*self.map["Ks_s"]
@@ -123,7 +125,7 @@ class GeoMap:
                                       + self.map["gst"]*self.map["Kt_t"])
         self.map["Ktt"] = (self.map["gst"]*self.map["Kt_s"]
                                       + self.map["gtt"]*self.map["Kt_t"])
-        print('K^ij computed.')
+        self.info_verbose('K^ij computed.')
         # Curvature tensor K^i_j as a matrix
         self.map["Kmat"] = sp.Matrix([[self.map["Kt_t"],self.map["Kt_s"]], [self.map["Kt_s"],self.map["Ks_s"]]])
         # self.map["Keigenvects"] = self.map["Kmat"].eigenvects()
@@ -137,15 +139,15 @@ class GeoMap:
         # self.map["u2"] = self.map["Keigenvects"][1][2][0]
         # self.map["u2t"] = self.map["u2"][0]
         # self.map["u2s"] = self.map["u2"][1]
-        print("Curvature tensor computed")
+        self.info_verbose("Curvature tensor computed")
 
         # Mean and Gaussian curvature (no simplify, too heavy)
-        print('Computing scalar curvatures ...')
+        self.info_verbose("Computing scalar curvatures...")
         self.map["H"] = ((self.map["Ks_s"] + self.map["Kt_t"])/2)
         self.map["K"] = (self.map["Ks_s"]*self.map["Kt_t"]
                                     - self.map["Ks_t"]*self.map["Kt_s"])
 
-        print('Computing Christoffel symbols ...')
+        self.info_verbose("Computing Christoffel symbols...")
         # Christoffel symbols
         self.map["Gs_ss"] = ((
             self.map["gss"]*self.map["g_ss_s"]
@@ -480,9 +482,13 @@ class GeoMap:
     def is_periodic_in_3d(self):
         return False
 
+    def info_verbose(self, message):
+        if self.verbose:
+            info_cyan(message)
+
 
 class EllipsoidMap(GeoMap):
-    def __init__(self, Rx, Ry, Rz):
+    def __init__(self, Rx, Ry, Rz, verbose=False):
         t, s = sp.symbols('t s', real=True)
         x = Rx * sp.cos(t) * sp.sin(s)
         y = Ry * sp.sin(t) * sp.sin(s)
@@ -500,7 +506,7 @@ class EllipsoidMap(GeoMap):
         xyz = (x, y, z)
         ts_min = (t_min, s_min)
         ts_max = (t_max, s_max)
-        GeoMap.__init__(self, xyz, ts, ts_min, ts_max)
+        GeoMap.__init__(self, xyz, ts, ts_min, ts_max, verbose=verbose)
 
     def compute_mesh(self, res, eps=1e-3):
         self.eps = eps
@@ -539,11 +545,12 @@ class EllipsoidMap(GeoMap):
 
 
 class SphereMap(EllipsoidMap):
-    def __init__(self, R):
-        EllipsoidMap.__init__(self, R, R, R)
+    def __init__(self, R, verbose=False):
+        EllipsoidMap.__init__(self, R, R, R, verbose=verbose)
+
 
 class CylinderMap(GeoMap):
-    def __init__(self, R, L, double_periodic=True):
+    def __init__(self, R, L, double_periodic=True, verbose=False):
         t, s = sp.symbols('t s', real=True)
         x = R * sp.cos(t/R)
         y = R * sp.sin(t/R)
@@ -559,7 +566,7 @@ class CylinderMap(GeoMap):
         ts_min = (t_min, s_min)
         ts_max = (t_max, s_max)
         self.double_periodic = double_periodic
-        GeoMap.__init__(self, xyz, ts, ts_min, ts_max)
+        GeoMap.__init__(self, xyz, ts, ts_min, ts_max, verbose=verbose)
 
     def compute_pbc(self):
         ts_min = (self.t_min, self.s_min)
@@ -570,8 +577,9 @@ class CylinderMap(GeoMap):
     def is_periodic_in_3d(self):
         return self.double_periodic
 
+
 class GaussianBumpMap(GeoMap):
-    def __init__(self, Lx, Ly, h, sigma):
+    def __init__(self, Lx, Ly, h, sigma, verbose=False):
         t, s = sp.symbols('t s', real=True)
         x = t
         y = s
@@ -586,17 +594,19 @@ class GaussianBumpMap(GeoMap):
         xyz = (x, y, z)
         ts_min = (t_min, s_min)
         ts_max = (t_max, s_max)
-        GeoMap.__init__(self, xyz, ts, ts_min, ts_max)
+        GeoMap.__init__(self, xyz, ts, ts_min, ts_max, verbose=verbose)
+
     def compute_mesh(self, res):
-        import mshr
-        print("Using overloaded compute_mesh for GaussianBump")
+        self.info_verbose("Using overloaded compute_mesh for GaussianBump")
         N = int(np.ceil((self.t_max-self.t_min)/(self.s_max-self.s_min)))
-        rect = mshr.Rectangle(df.Point(self.t_min, self.s_min), df.Point(self.t_max, self.s_max))
+        rect = mshr.Rectangle(df.Point(self.t_min, self.s_min),
+                              df.Point(self.t_max, self.s_max))
         ref_mesh = mshr.generate_mesh(rect, res, "cgal")
         self.ref_mesh = ref_mesh
 
+
 class SaddleMap(GeoMap):
-    def __init__(self, Lx, Ly, a, b):
+    def __init__(self, Lx, Ly, a, b, verbose=False):
         t, s = sp.symbols('t s', real=True)
         x = t
         y = s
@@ -611,11 +621,47 @@ class SaddleMap(GeoMap):
         xyz = (x, y, z)
         ts_min = (t_min, s_min)
         ts_max = (t_max, s_max)
-        GeoMap.__init__(self, xyz, ts, ts_min, ts_max)
+        GeoMap.__init__(self, xyz, ts, ts_min, ts_max, verbose=verbose)
 
     def compute_mesh(self, res):
-        import mshr
-        print("Using overloaded compute_mesh for Saddle geometry")
-        rect = mshr.Rectangle(df.Point(self.t_min, self.s_min), df.Point(self.t_max, self.s_max))
+        self.info_verbose("Using overloaded compute_mesh for Saddle geometry")
+        rect = mshr.Rectangle(df.Point(self.t_min, self.s_min),
+                              df.Point(self.t_max, self.s_max))
         ref_mesh = mshr.generate_mesh(rect, res, "cgal")
+        self.ref_mesh = ref_mesh
+
+
+class TorusMap(GeoMap):
+    def __init__(self, R, r, verbose=False):
+        t, s = sp.symbols('t s', real=True)
+        x = (R + r*sp.cos(t)) * sp.cos(s)
+        y = (R + r*sp.cos(t)) * sp.sin(s)
+        z = r*sp.sin(t)
+
+        t_min = 0.
+        t_max = 2*np.pi
+        s_min = 0.
+        s_max = 2*np.pi
+
+        ts = (t, s)
+        xyz = (x, y, z)
+        ts_min = (t_min, s_min)
+        ts_max = (t_max, s_max)
+        GeoMap.__init__(self, xyz, ts, ts_min, ts_max, verbose=verbose)
+        self.R = R
+        self.r = r
+
+    def compute_pbc(self):
+        ts_min = (self.t_min, self.s_min)
+        ts_max = (self.t_max, self.s_max)
+        self.pbc = TorusPBC(ts_min, ts_max)
+
+    def compute_mesh(self, res):
+        factor = np.sqrt(self.R/self.r)
+        Nt = int(res/factor)
+        Ns = int(factor*res)
+        ref_mesh = df.RectangleMesh.create(
+            [df.Point(self.t_min, self.s_min),
+             df.Point(self.t_max, self.s_max)],
+            [Nt, Ns], df.cpp.mesh.CellType.Type.triangle)
         self.ref_mesh = ref_mesh

@@ -1,0 +1,228 @@
+import dolfin as df
+from maps import TorusMap
+from common.io import Timeseries, save_checkpoint, load_checkpoint, \
+    load_parameters
+from common.cmd import mpi_max, parse_command_line, info_blue, info_cyan
+from common.utilities import RandomInitialConditions, QuarticPotential, \
+    AroundInitialConditions, AlongInitialConditions, MMSInitialConditions
+import os
+import ufl
+import numpy as np
+import sympy as sp
+
+
+class TimeStepSelector(df.Constant):
+    def __init__(self, value):
+        self.chop_factor = 2
+        df.Constant.__init__(self, value)
+
+    def get(self):
+        return float(self.values())
+
+    def set(self, value):
+        self.assign(value)
+
+    def chop(self):
+        self.assign(self.get()/self.chop_factor)
+
+
+parameters = dict(
+    R=30.,  # Radius
+    r=10.,
+    res=100,  # Resolution
+    dt=1e-1,
+    tau=0.2,
+    t_ramp=100.,
+    tau_ramp=0.9,
+    h=1.1,
+    M=1.0,  # Mobility
+    restart_folder=None,
+    folder="results_pfcbc_torus",
+    t_0=0.0,
+    tstep=0,
+    T=10000,
+    checkpoint_intv=50,
+    verbose=True,
+    anneal=True,
+)
+cmd_kwargs = parse_command_line()
+parameters.update(**cmd_kwargs)
+if parameters["restart_folder"]:
+    load_parameters(parameters, os.path.join(
+        parameters["restart_folder"], "parameters.dat"))
+    parameters.update(**cmd_kwargs)
+
+R = parameters["R"]
+r = parameters["r"]
+res = parameters["res"]
+dt = TimeStepSelector(parameters["dt"])
+tau = df.Constant(parameters["tau"])
+h = df.Constant(parameters["h"])
+M = df.Constant(parameters["M"])
+
+geo_map = TorusMap(R, r)
+geo_map.initialize(res, restart_folder=parameters["restart_folder"])
+
+W = geo_map.mixed_space((geo_map.ref_el,)*4)
+
+# Define trial and test functions
+du = df.TrialFunction(W)
+chi, xi, eta, etahat = df.TestFunctions(W)
+
+# Define functions
+u = df.TrialFunction(W)
+u_ = df.Function(W, name="u_")  # current solution
+u_1 = df.Function(W, name="u_1")  # solution from previous converged step
+
+# Split mixed functions
+psi,  mu, nu, nuhat = df.split(u)
+psi_, mu_, nu_, nuhat_ = df.split(u_)
+psi_1, mu_1, nu_1, nuhat_1 = df.split(u_1)
+
+# Create intial conditions
+if parameters["restart_folder"] is None:
+    u_init = RandomInitialConditions(u_, degree=1)
+    u_1.interpolate(u_init)
+    u_.assign(u_1)
+else:
+    load_checkpoint(parameters["restart_folder"], u_, u_1)
+
+w = QuarticPotential()
+
+#dw_lin = w.derivative_linearized(psi, psi_1, tau)
+dw_stab = w.derivative_stab(psi_, psi_1, tau)
+
+# Define some UFL indices:
+i, j, k, l = ufl.Index(), ufl.Index(), ufl.Index(), ufl.Index()
+
+# Brazovskii-Swift (conserved PFC with dc/dt = grad^2 delta F/delta c)
+m_NL = F_psi_NL = (1 + geo_map.K * h**2/12) * dw_stab * xi
+m_0 = (4 * nu_ * xi
+       - 4 * geo_map.gab[i, j]*nu_.dx(i)*xi.dx(j))
+m_2 = (2 * (geo_map.H * nuhat_ - geo_map.K*nu_)*xi
+       - 4 * geo_map.Kab[i, j]*nuhat_.dx(i)*xi.dx(j)
+       + 5 * geo_map.K * geo_map.gab[i, j]*nu_.dx(i)*xi.dx(j)
+       - 2 * geo_map.H * (geo_map.gab[i, j]*nuhat_.dx(i)*xi.dx(j)
+                          + geo_map.Kab[i, j]*nu_.dx(i)*xi.dx(j)))/3
+m = m_NL + m_0 + h**2 * m_2
+
+F_psi = geo_map.form(1/dt * (psi_ - psi_1) * chi
+                     + M * geo_map.gab[i, j]*mu_.dx(i)*chi.dx(j))
+
+# Enable/disable Manufactured Solution by choosing one of the two lines below:
+F_mu = geo_map.form(mu_*xi - m)
+
+F_nu = geo_map.form(nu_*eta + geo_map.gab[i, j]*psi_.dx(i)*eta.dx(j))
+F_nuhat = geo_map.form(nuhat_*etahat
+                       + geo_map.Kab[i, j]*psi_.dx(i)*etahat.dx(j))
+
+F = F_psi + F_mu + F_nu + F_nuhat
+
+# a = df.lhs(F)
+# L = df.rhs(F)
+J = df.derivative(F, u_, du=u)
+
+# SOLVER
+# problem = df.LinearVariationalProblem(a, L, u_)
+# solver = df.LinearVariationalSolver(problem)
+
+problem = df.NonlinearVariationalProblem(F, u_, J=J)
+solver = df.NonlinearVariationalSolver(problem)
+solver.parameters["newton_solver"]["absolute_tolerance"] = 1e-8
+solver.parameters["newton_solver"]["relative_tolerance"] = 1e-5
+solver.parameters["newton_solver"]["maximum_iterations"] = 16
+solver.parameters["newton_solver"]["linear_solver"] = "gmres"
+solver.parameters["newton_solver"]["preconditioner"] = "default"
+# solver.parameters["newton_solver"]["krylov_solver"]["nonzero_initial_guess"] = True
+# solver.parameters["newton_solver"]["krylov_solver"]["absolute_tolerance"] = 1e-8
+# solver.parameters["newton_solver"]["krylov_solver"]["monitor_convergence"] = False
+solver.parameters["newton_solver"]["krylov_solver"]["maximum_iterations"] = 1000
+
+# solver.parameters["linear_solver"] = "gmres"
+# solver.parameters["preconditioner"] = "jacobi"
+
+df.parameters["form_compiler"]["optimize"] = True
+df.parameters["form_compiler"]["cpp_optimize"] = True
+
+#
+t = parameters["t_0"]
+tstep = parameters["tstep"]
+T = parameters["T"]
+
+# Output file
+ts = Timeseries(parameters["folder"], u_,
+                ("psi", "mu", "nu", "nuhat"), geo_map, tstep,
+                parameters=parameters,
+                restart_folder=parameters["restart_folder"])
+
+# Shorthand notation:
+H = geo_map.H
+K = geo_map.K
+gab = geo_map.gab
+
+E_0 = (2*nu_**2 - 2 * geo_map.gab[i, j]*psi_.dx(i)*psi_.dx(j) + w(psi_, tau))
+E_2 = (h**2/12)*(2*(4*nuhat_**2 + 4*H*nuhat_*nu_ - 5*K*nu_**2)
+                 - 2 * (2*H*nuhat_ - 2*K*gab[i, j]*psi_.dx(i)*psi_.dx(j))
+                 + (tau/2)*K*psi_**2 + (1/4)*K*psi_**4)
+ts.add_scalar_field(E_0, "E_0")
+ts.add_scalar_field(E_2, "E_2")
+ts.add_scalar_field(df.sqrt(geo_map.gab[i, j]*mu_.dx(i)*mu_.dx(j)),
+                    "abs_grad_mu")
+
+
+# Set tau
+def anneal_func(t, tau_0, tau_ramp, t_ramp):
+    dtau = (tau_0 - tau_ramp)/2
+    tau_avg = (tau_0 + tau_ramp)/2
+    k = np.pi/t_ramp
+    return dtau*np.cos(k*t) + tau_avg
+
+
+# Step in time
+ts.dump(tstep)
+
+while t < T:
+    tstep += 1
+    info_cyan("tstep = {}, time = {}".format(tstep, t))
+
+    u_1.assign(u_)
+
+    converged = False
+    while not converged:
+        if parameters["anneal"]:
+            tau.assign(
+                anneal_func(
+                    t+dt.get(),
+                    parameters["tau"],
+                    parameters["tau_ramp"],
+                    parameters["t_ramp"]))
+        try:
+            solver.solve()
+            converged = True
+        except:
+            info_blue("Did not converge. Chopping timestep.")
+            dt.chop()
+            info_blue("New timestep is: dt = {}".format(dt.get()))
+    # Update time with final dt value
+    t += dt.get()
+
+    if tstep % 1 == 0:
+        ts.dump(t)
+        Eout_0 = df.assemble(geo_map.form(E_0))
+        Eout_2 = df.assemble(geo_map.form(E_2))
+        grad_mu = ts.get_function("abs_grad_mu")
+        grad_mu_max = mpi_max(grad_mu.vector().get_local())
+        # Assigning timestep size according to grad_mu_max:
+        dt_prev = dt.get()
+        dt.set(min(0.05/grad_mu_max, T-t))
+        info_blue("dt = {}".format(dt.get()))
+        ts.dump_stats(t,
+                      [grad_mu_max, dt_prev, dt.get(),
+                       float(h.values()),
+                       Eout_0, Eout_2,
+                       Eout_0 + Eout_2, float(tau.values())],
+                      "data")
+
+    if tstep % parameters["checkpoint_intv"] == 0 or t >= T:
+        save_checkpoint(tstep, t, geo_map.ref_mesh,
+                        u_, u_1, ts.folder, parameters)

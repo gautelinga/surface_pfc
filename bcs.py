@@ -27,10 +27,16 @@ class CylinderPBC(PBC):
 
     def inside(self, x, on_boundary):
         if self.double_periodic:
-            return bool((df.near(x[0], self.t_min) or df.near(x[1], self.s_min)) and (not ((df.near(x[0], self.t_max) and df.near(x[1], self.s_min)) or
-                  (df.near(x[0], self.t_min) and df.near(x[1], self.s_max)))) and on_boundary) # For double-periodic
+            return bool((df.near(x[0], self.t_min) or
+                         df.near(x[1], self.s_min)) and (
+                             not ((df.near(x[0], self.t_max) and
+                                   df.near(x[1], self.s_min)) or
+                                  (df.near(x[0], self.t_min) and
+                                   df.near(x[1], self.s_max)))) and
+                        on_boundary)  # For double-periodic
         else:
-            return bool(df.near(x[0], self.t_min) and on_boundary) # For single-periodic
+            return bool(df.near(x[0], self.t_min) and
+                        on_boundary)  # For single-periodic
 
     def map(self, x, y):
         if self.double_periodic:
@@ -54,3 +60,8 @@ class CylinderPBC(PBC):
             else:
                 y[0] = x[0]
                 y[1] = x[1]
+
+
+class TorusPBC(CylinderPBC):
+    def __init__(self, ts_min, ts_max):
+        CylinderPBC.__init__(self, ts_min, ts_max, double_periodic=True)
