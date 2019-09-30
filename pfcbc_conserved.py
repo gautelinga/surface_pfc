@@ -2,7 +2,7 @@ import dolfin as df
 from maps import EllipsoidMap, CylinderMap, GaussianBumpMap
 from common.io import Timeseries, save_checkpoint, load_checkpoint, \
     load_parameters
-from common.cmd import mpi_max, parse_command_line
+from common.cmd import mpi_max, parse_command_line, info_blue
 from common.utilities import RandomInitialConditions, QuarticPotential, \
     AroundInitialConditions, AlongInitialConditions, MMSInitialConditions
 import os
@@ -190,12 +190,15 @@ while t < T:
         E_0 = (2*nu_**2 - 2 * geo_map.gab[i, j]*psi_.dx(i)*psi_.dx(j) + w(psi_, tau))
         E_nonK = df.assemble(geo_map.form(E_0))
         E_K = df.assemble(geo_map.form((h**2/12)*(2*(4*nuhat_**2 + 4*H*nuhat_*nu_ - 5*K*nu_**2) - 2 * (2*H*nuhat_ - 2*K*gab[i,j]*psi_.dx(i)*psi_.dx(j)) + (tau/2)*K*psi_**2 + (1/4)*K*psi_**4))) # Double checked for correctness
+        E_tot = E_nonK+E_K
         grad_mu = ts.get_function("abs_grad_mu")
         grad_mu_max = mpi_max(grad_mu.vector().get_local())
         # Assigning timestep size according to grad_mu_max:
-        dt.assign(min(dt_max,max(0.5,0.5/grad_mu_max)))
-        print(float(dt.values()))
-        ts.dump_stats(t, [grad_mu_max, float(dt.values()), float(h.values()), E_nonK, E_K], "data")
+        dt.assign(max(0.01,0.5/grad_mu_max))
+        info_blue("t = {}".format(t))
+        info_blue("dt = {}".format(float(dt.values())))
+        info_blue("noise = {}".format(initial_noise))
+        ts.dump_stats(t, [grad_mu_max, float(dt.values()), float(h.values()), E_nonK, E_K, E_tot], "data")
 
     if tstep % parameters["checkpoint_intv"] == 0 or t >= T:
         save_checkpoint(tstep, t, geo_map.ref_mesh,
