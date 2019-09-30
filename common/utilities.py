@@ -75,6 +75,21 @@ class AlongInitialConditions(df.UserExpression):
     def value_shape(self):
         return (self.size,)
 
+# Class representing the intial conditions. Wavenumber hardcoded for now.
+class CircularInitialConditions(df.UserExpression):
+    def __init__(self, u_, **kwargs):
+        self.size = len(u_)
+        super().__init__(**kwargs)
+
+    def eval(self, values, x):
+        for i in range(self.size):
+            values[i] = 0.0
+        values[0] = np.sin(np.sqrt(x[0]**2+x[1]**2)/np.sqrt(2))
+        #values[0] = np.sin(1.15*np.sqrt(x[0]**2+x[1]**2)/np.sqrt(2))
+
+    def value_shape(self):
+        return (self.size,)
+
 # Class representing the intial conditions for manufactured solution
 class MMSInitialConditions(df.UserExpression):
     def __init__(self, u_, geo_map, **kwargs):
