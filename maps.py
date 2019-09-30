@@ -118,13 +118,13 @@ class GeoMap:
 
         # Skipping "simplify" because it is exceedingly slow:
         self.map["Kss"] = (self.map["gss"]*self.map["Ks_s"]
-                                      + self.map["gst"]*self.map["Ks_t"])
+                           + self.map["gst"]*self.map["Ks_t"])
         self.map["Kst"] = (self.map["gst"]*self.map["Ks_s"]
-                                      + self.map["gtt"]*self.map["Ks_t"])
+                           + self.map["gtt"]*self.map["Ks_t"])
         self.map["Kts"] = (self.map["gss"]*self.map["Kt_s"]
-                                      + self.map["gst"]*self.map["Kt_t"])
+                           + self.map["gst"]*self.map["Kt_t"])
         self.map["Ktt"] = (self.map["gst"]*self.map["Kt_s"]
-                                      + self.map["gtt"]*self.map["Kt_t"])
+                           + self.map["gtt"]*self.map["Kt_t"])
         self.info_verbose('K^ij computed.')
         # Curvature tensor K^i_j as a matrix
         self.map["Kmat"] = sp.Matrix([[self.map["Kt_t"],self.map["Kt_s"]], [self.map["Kt_s"],self.map["Ks_s"]]])
@@ -145,7 +145,7 @@ class GeoMap:
         self.info_verbose("Computing scalar curvatures...")
         self.map["H"] = ((self.map["Ks_s"] + self.map["Kt_t"])/2)
         self.map["K"] = (self.map["Ks_s"]*self.map["Kt_t"]
-                                    - self.map["Ks_t"]*self.map["Kt_s"])
+                         - self.map["Ks_t"]*self.map["Kt_s"])
 
         self.info_verbose("Computing Christoffel symbols...")
         # Christoffel symbols
@@ -371,42 +371,49 @@ class GeoMap:
         Ks_t_arr = Ks_t.vector().get_local()
         Ks_s_arr = Ks_s.vector().get_local()
 
-        kappa1_arr = Ks_s.vector().get_local() # Fiducial initiation
-        kappa2_arr = Ks_s.vector().get_local() # Fiducial initiation
-        u1t_arr = Ks_s.vector().get_local() # Fiducial initiation
-        u1s_arr = Ks_s.vector().get_local() # Fiducial initiation
-        u2t_arr = Ks_s.vector().get_local() # Fiducial initiation
-        u2s_arr = Ks_s.vector().get_local() # Fiducial initiation
-        theta1_arr = Ks_s.vector().get_local() # Fiducial initiation
-        theta2_arr = Ks_s.vector().get_local() # Fiducial initiation
+        kappa1_arr = Ks_s.vector().get_local()  # Fiducial initiation
+        kappa2_arr = Ks_s.vector().get_local()  # Fiducial initiation
+        u1t_arr = Ks_s.vector().get_local()  # Fiducial initiation
+        u1s_arr = Ks_s.vector().get_local()  # Fiducial initiation
+        u2t_arr = Ks_s.vector().get_local()  # Fiducial initiation
+        u2s_arr = Ks_s.vector().get_local()  # Fiducial initiation
+        theta1_arr = Ks_s.vector().get_local()  # Fiducial initiation
+        theta2_arr = Ks_s.vector().get_local()  # Fiducial initiation
 
         i = 0
-        for Kt_t_loc, Kt_s_loc, Ks_t_loc, Ks_s_loc in zip(Kt_t_arr, Kt_s_arr, Ks_t_arr, Ks_s_arr):
+        for Kt_t_loc, Kt_s_loc, Ks_t_loc, Ks_s_loc in zip(
+                Kt_t_arr, Kt_s_arr, Ks_t_arr, Ks_s_arr):
             try:
-                Kmat_loc = np.array([[Kt_t_loc,Kt_s_loc],[Ks_t_loc,Ks_s_loc]])
+                Kmat_loc = np.array([[Kt_t_loc, Kt_s_loc],
+                                     [Ks_t_loc, Ks_s_loc]])
                 kappa_loc, u_loc = np.linalg.eig(Kmat_loc)
                 # Possible orderings of curvatures:
-                # Absolute curvature: Gives discontinuous kappa_i, but is useful
-                # when only the most curved direction is relevant.
-                # Signed curvature: Gives continuous kappa_i, but places emphasis
-                # on something rather irrelevant, namly the sign of the curvature.
-                #if abs(kappa_loc[0]) > abs(kappa_loc[1]):
+                
+                # Absolute curvature: Gives discontinuous kappa_i, but
+                # is useful when only the most curved direction is
+                # relevant.
+
+                # Signed curvature: Gives continuous kappa_i, but
+                # places emphasis on something rather irrelevant,
+                # namly the sign of the curvature.
+
+                # if abs(kappa_loc[0]) > abs(kappa_loc[1]):
                 if kappa_loc[0] > kappa_loc[1]:
                     kappa1_arr[i] = kappa_loc[0]
                     kappa2_arr[i] = kappa_loc[1]
-                    u1t_arr[i] = u_loc[0,0]
-                    u1s_arr[i] = u_loc[1,0]
-                    u2t_arr[i] = u_loc[0,1]
-                    u2s_arr[i] = u_loc[1,1]
+                    u1t_arr[i] = u_loc[0, 0]
+                    u1s_arr[i] = u_loc[1, 0]
+                    u2t_arr[i] = u_loc[0, 1]
+                    u2s_arr[i] = u_loc[1, 1]
                 else:
                     kappa1_arr[i] = kappa_loc[1]
                     kappa2_arr[i] = kappa_loc[0]
-                    u1t_arr[i] = u_loc[0,1]
-                    u1s_arr[i] = u_loc[1,1]
-                    u2t_arr[i] = u_loc[0,0]
-                    u2s_arr[i] = u_loc[1,0]
-                theta1_arr[i] = np.arctan2(u1s_arr[i],u1t_arr[i])
-                theta2_arr[i] = np.arctan2(u2s_arr[i],u2t_arr[i])
+                    u1t_arr[i] = u_loc[0, 1]
+                    u1s_arr[i] = u_loc[1, 1]
+                    u2t_arr[i] = u_loc[0, 0]
+                    u2s_arr[i] = u_loc[1, 0]
+                theta1_arr[i] = np.arctan2(u1s_arr[i], u1t_arr[i])
+                theta2_arr[i] = np.arctan2(u2s_arr[i], u2t_arr[i])
             except:
                 kappa1_arr[i] = 0
                 kappa2_arr[i] = 0
@@ -634,14 +641,14 @@ class SaddleMap(GeoMap):
 class TorusMap(GeoMap):
     def __init__(self, R, r, verbose=False):
         t, s = sp.symbols('t s', real=True)
-        x = (R + r*sp.cos(t)) * sp.cos(s)
-        y = (R + r*sp.cos(t)) * sp.sin(s)
-        z = r*sp.sin(t)
+        x = (R + r*sp.cos(t/r)) * sp.cos(s/R)
+        y = (R + r*sp.cos(t/r)) * sp.sin(s/R)
+        z = r*sp.sin(t/r)
 
         t_min = 0.
-        t_max = 2*np.pi
+        t_max = 2*np.pi*r
         s_min = 0.
-        s_max = 2*np.pi
+        s_max = 2*np.pi*R
 
         ts = (t, s)
         xyz = (x, y, z)

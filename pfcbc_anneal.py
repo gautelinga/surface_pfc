@@ -1,5 +1,5 @@
 import dolfin as df
-from maps import TorusMap
+from maps import TorusMap, SphereMap
 from common.io import Timeseries, save_checkpoint, load_checkpoint, \
     load_parameters
 from common.cmd import mpi_max, parse_command_line, info_blue, info_cyan
@@ -12,16 +12,15 @@ import numpy as np
 
 parameters = dict(
     R=30.,  # Radius
-    r=10.,
-    res=100,  # Resolution
+    res=160,  # Resolution
     dt=1e-1,
     tau=0.2,
     t_ramp=500.,
     tau_ramp=0.99,
-    h=1.1,
+    h=0.0,
     M=1.0,  # Mobility
     restart_folder=None,
-    folder="results_pfcbc_torus",
+    folder="results_pfcbc_sphere_anneal",
     t_0=0.0,
     tstep=0,
     T=2000,
@@ -39,14 +38,13 @@ if parameters["restart_folder"]:
     parameters.update(**cmd_kwargs)
 
 R = parameters["R"]
-r = parameters["r"]
 res = parameters["res"]
 dt = TimeStepSelector(parameters["dt"])
 tau = df.Constant(parameters["tau"])
 h = df.Constant(parameters["h"])
 M = df.Constant(parameters["M"])
 
-geo_map = TorusMap(R, r)
+geo_map = SphereMap(R)
 geo_map.initialize(res, restart_folder=parameters["restart_folder"])
 
 W = geo_map.mixed_space((geo_map.ref_el,)*4)
@@ -69,7 +67,7 @@ psi_1, mu_1, nu_1, nuhat_1 = df.split(u_1)
 if parameters["restart_folder"] is None:
     init_mode = parameters["init_mode"]
     if init_mode == "random":
-        u_init = RandomIC(u_, degree=1)
+        u_init = RandomIC(u_, amplitude=1e-1, degree=1)
     elif init_mode == "striped":
         u_init = StripedIC(u_, alpha=parameters["alpha"]*np.pi/180.0, degree=1)
     else:
@@ -123,12 +121,12 @@ solver = df.NonlinearVariationalSolver(problem)
 solver.parameters["newton_solver"]["absolute_tolerance"] = 1e-8
 solver.parameters["newton_solver"]["relative_tolerance"] = 1e-5
 solver.parameters["newton_solver"]["maximum_iterations"] = 16
-solver.parameters["newton_solver"]["linear_solver"] = "gmres"
-solver.parameters["newton_solver"]["preconditioner"] = "default"
+# solver.parameters["newton_solver"]["linear_solver"] = "gmres"
+# solver.parameters["newton_solver"]["preconditioner"] = "default"
 # solver.parameters["newton_solver"]["krylov_solver"]["nonzero_initial_guess"] = True
 # solver.parameters["newton_solver"]["krylov_solver"]["absolute_tolerance"] = 1e-8
 # solver.parameters["newton_solver"]["krylov_solver"]["monitor_convergence"] = False
-solver.parameters["newton_solver"]["krylov_solver"]["maximum_iterations"] = 1000
+# solver.parameters["newton_solver"]["krylov_solver"]["maximum_iterations"] = 1000
 
 # solver.parameters["linear_solver"] = "gmres"
 # solver.parameters["preconditioner"] = "jacobi"
@@ -206,7 +204,7 @@ while t < T:
         grad_mu_max = mpi_max(grad_mu.vector().get_local())
         # Assigning timestep size according to grad_mu_max:
         dt_prev = dt.get()
-        dt.set(min(0.05/grad_mu_max, T-t))
+        dt.set(min(0.25/grad_mu_max, T-t))
         info_blue("dt = {}".format(dt.get()))
         ts.dump_stats(t,
                       [grad_mu_max, dt_prev, dt.get(),

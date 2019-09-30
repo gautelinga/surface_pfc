@@ -3,8 +3,8 @@ from maps import EllipsoidMap, CylinderMap, GaussianBumpMap
 from common.io import Timeseries, save_checkpoint, load_checkpoint, \
     load_parameters
 from common.cmd import mpi_max, parse_command_line
-from common.utilities import RandomInitialConditions, QuarticPotential, \
-    AroundInitialConditions, AlongInitialConditions, MMSInitialConditions
+from common.utilities import QuarticPotential
+from ics import RandomIC, MMSIC, AroundStripedIC, AlongStripedIC
 import os
 import ufl
 import numpy as np
@@ -75,11 +75,10 @@ psi_1, mu_1, nu_1, nuhat_1 = df.split(u_1)
 
 # Create intial conditions
 if parameters["restart_folder"] is None:
-    u_init = RandomInitialConditions(u_, degree=1)
-    #u_init = AroundInitialConditions(u_, degree=1)
-    #u_init = AlongInitialConditions(u_, degree=1)
-    #u_init = AlongInitialConditions(u_, degree=1)
-    #u_init = MMSInitialConditions(u_, geo_map, degree=1)
+    u_init = RandomIC(u_, degree=1)
+    # u_init = AroundStripedIC(u_, degree=1)
+    # u_init = AlongStripedIC(u_, degree=1)
+    # u_init = MMSIC(u_, geo_map, degree=1)
     u_1.interpolate(u_init)
     u_.assign(u_1)
 else:

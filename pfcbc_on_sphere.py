@@ -3,7 +3,8 @@ from maps import EllipsoidMap, CylinderMap
 from common.io import Timeseries, save_checkpoint, load_checkpoint, \
     load_parameters
 from common.cmd import parse_command_line
-from common.utilities import RandomInitialConditions, QuarticPotential
+from common.utilities import QuarticPotential
+from ics import RandomIC
 import os
 
 
@@ -62,7 +63,7 @@ psi_1, nu_1, nuhat_1 = df.split(u_1)
 
 # Create intial conditions
 if parameters["restart_folder"] is None:
-    u_init = RandomInitialConditions(u_, degree=1)
+    u_init = RandomIC(u_, degree=1)
     u_1.interpolate(u_init)
     u_.assign(u_1)
 else:
@@ -94,8 +95,8 @@ L = df.rhs(F)
 problem = df.LinearVariationalProblem(a, L, u_)
 solver = df.LinearVariationalSolver(problem)
 
-#solver.parameters["linear_solver"] = "gmres"
-#solver.parameters["preconditioner"] = "jacobi"
+# solver.parameters["linear_solver"] = "gmres"
+# solver.parameters["preconditioner"] = "jacobi"
 
 df.parameters["form_compiler"]["optimize"] = True
 df.parameters["form_compiler"]["cpp_optimize"] = True

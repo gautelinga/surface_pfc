@@ -3,20 +3,7 @@ from maps import SphereMap, EllipsoidMap
 from common.io import dump_xdmf, Timeseries
 import random
 import numpy as np
-
-
-# Class representing the intial conditions
-class InitialConditions(df.UserExpression):
-    def __init__(self, **kwargs):
-        random.seed(2 + df.MPI.rank(df.MPI.comm_world))
-        super().__init__(**kwargs)
-
-    def eval(self, values, x):
-        values[0] = (0.5 - random.random())
-        values[1] = 0.0
-
-    def value_shape(self):
-        return (2,)
+from ics import RandomIC
 
 
 R = 30.0
@@ -45,7 +32,7 @@ c,  mu = df.split(u)
 c_1, mu_1 = df.split(u_1)
 
 # Create intial conditions and interpolate
-u_init = InitialConditions(degree=1)
+u_init = RandomIC(u_, amplitude=0.5, degree=1)
 u_1.interpolate(u_init)
 
 
@@ -68,8 +55,8 @@ L = df.rhs(F)
 problem = df.LinearVariationalProblem(a, L, u_)
 solver = df.LinearVariationalSolver(problem)
 
-#solver.parameters["linear_solver"] = "gmres"
-#solver.parameters["preconditioner"] = "jacobi"
+# solver.parameters["linear_solver"] = "gmres"
+# solver.parameters["preconditioner"] = "jacobi"
 
 df.parameters["form_compiler"]["optimize"] = True
 df.parameters["form_compiler"]["cpp_optimize"] = True

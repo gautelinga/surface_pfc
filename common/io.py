@@ -1,7 +1,7 @@
 import dolfin as df
 import os
 from .cmd import mpi_is_root, mpi_barrier, mpi_comm, \
-    mpi_size, mpi_rank, info_red, info_cyan
+    mpi_size, mpi_rank, info_red, info_cyan, info_on_red
 import numpy as np
 import json
 import h5py
