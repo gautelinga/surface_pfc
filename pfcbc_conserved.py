@@ -87,7 +87,15 @@ else:
 
 w = QuarticPotential()
 
-dw_lin = w.derivative_linearized(psi, psi_1, tau)
+# Define the functional form of the reduced temperature (if non-uniforum temperature desired)
+tau_h = 3 # High temperature (parameter)
+rh = 4*R/5 # Radius where temperature shifts
+k = 1/100 # Temperature shift rate
+taufunction = df.Expression('tau + (tauh-tau)/(1 + exp(-k*(x[0]*x[0]+x[1]*x[1]-rh*rh ) ) )', k=k, tau=tau, tauh=tau_h, rh=rh, degree=2)
+
+# Choose between uniform (tau) or non-uniform (taufunction) reduced temperature:
+dw_lin = w.derivative_linearized(psi, psi_1, taufunction)
+#dw_lin = w.derivative_linearized(psi, psi_1, tau)
 
 # Define some UFL indices:
 i, j, k, l = ufl.Index(), ufl.Index(), ufl.Index(), ufl.Index()
