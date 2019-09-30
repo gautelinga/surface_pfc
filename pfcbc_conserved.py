@@ -2,9 +2,10 @@ import dolfin as df
 from maps import EllipsoidMap, CylinderMap, GaussianBumpMap
 from common.io import Timeseries, save_checkpoint, load_checkpoint, \
     load_parameters
-from common.cmd import mpi_max, parse_command_line
+from common.cmd import mpi_max, parse_command_line, info_blue
 from common.utilities import QuarticPotential
-from ics import RandomIC, MMSIC, AroundStripedIC, AlongStripedIC
+from ics import RandomIC, MMSIC, AroundStripedIC, AlongStripedIC, \
+    CircularStripedIC
 import os
 import ufl
 import numpy as np
@@ -13,18 +14,18 @@ import sympy as sp
 
 parameters = dict(
     R=20*np.sqrt(2),  # Radius
-    #R=4*np.sqrt(2),  # Radius
-    #res=140,  # Resolution
+    # R=4*np.sqrt(2),  # Radius
+    # res=140,  # Resolution
     res=200,  # Resolution
     dt=1e-1,
     tau=0.2,
     h=1.1,
-    #h=0.0,
+    # h=0.0,
     M=1.0,  # Mobility
     restart_folder=None,
     t_0=0.0,
     tstep=0,
-    #T=1e6,
+    # T=1e6,
     T=100,
     # T=10000.0,
     checkpoint_intv=50,
@@ -43,13 +44,14 @@ tau = parameters["tau"]
 h = df.Constant(parameters["h"])
 M = parameters["M"]
 
-#geo_map = EllipsoidMap(R, R, R)
-geo_map = GaussianBumpMap(7*R,7*R,2*R,R)
-#geo_map = CylinderMap(R, 2*np.pi*R)
+# geo_map = EllipsoidMap(R, R, R)
+geo_map = GaussianBumpMap(7*R, 7*R, 2*R,R)
+# geo_map = CylinderMap(R, 2*np.pi*R)
 geo_map.initialize(res, restart_folder=parameters["restart_folder"])
 
 # Initialize the Method of Manufactured Solutions:
-psi_mms_input = ((sp.sin(geo_map.s/sp.sqrt(2)))**2 + (sp.sin(geo_map.t/sp.sqrt(2)))**2)
+psi_mms_input = ((sp.sin(geo_map.s/sp.sqrt(2)))**2
+                 + (sp.sin(geo_map.t/sp.sqrt(2)))**2)
 # Note that the Initial Condition must also be separately specified.
 my_mms = ManufacturedSolution(geo_map, psi_mms_input)
 psiMMS = my_mms.psi()
@@ -75,7 +77,8 @@ psi_1, mu_1, nu_1, nuhat_1 = df.split(u_1)
 
 # Create intial conditions
 if parameters["restart_folder"] is None:
-    u_init = RandomIC(u_, degree=1)
+    u_init = CircularStripedIC(u_, degree=1)
+    # u_init = RandomIC(u_, degree=1)
     # u_init = AroundStripedIC(u_, degree=1)
     # u_init = AlongStripedIC(u_, degree=1)
     # u_init = MMSIC(u_, geo_map, degree=1)
@@ -86,7 +89,15 @@ else:
 
 w = QuarticPotential()
 
-dw_lin = w.derivative_linearized(psi, psi_1, tau)
+# Define the functional form of the reduced temperature (if non-uniforum temperature desired)
+tau_h = 3 # High temperature (parameter)
+rh = 4*R/5 # Radius where temperature shifts
+k = 1/100 # Temperature shift rate
+taufunction = df.Expression('tau + (tauh-tau)/(1 + exp(-k*(x[0]*x[0]+x[1]*x[1]-rh*rh ) ) )', k=k, tau=tau, tauh=tau_h, rh=rh, degree=2)
+
+# Choose between uniform (tau) or non-uniform (taufunction) reduced temperature:
+dw_lin = w.derivative_linearized(psi, psi_1, taufunction)
+#dw_lin = w.derivative_linearized(psi, psi_1, tau)
 
 # Define some UFL indices:
 i, j, k, l = ufl.Index(), ufl.Index(), ufl.Index(), ufl.Index()
@@ -181,12 +192,15 @@ while t < T:
         E_0 = (2*nu_**2 - 2 * geo_map.gab[i, j]*psi_.dx(i)*psi_.dx(j) + w(psi_, tau))
         E_nonK = df.assemble(geo_map.form(E_0))
         E_K = df.assemble(geo_map.form((h**2/12)*(2*(4*nuhat_**2 + 4*H*nuhat_*nu_ - 5*K*nu_**2) - 2 * (2*H*nuhat_ - 2*K*gab[i,j]*psi_.dx(i)*psi_.dx(j)) + (tau/2)*K*psi_**2 + (1/4)*K*psi_**4))) # Double checked for correctness
+        E_tot = E_nonK+E_K
         grad_mu = ts.get_function("abs_grad_mu")
         grad_mu_max = mpi_max(grad_mu.vector().get_local())
         # Assigning timestep size according to grad_mu_max:
-        dt.assign(min(dt_max,max(0.5,0.5/grad_mu_max)))
-        print(float(dt.values()))
-        ts.dump_stats(t, [grad_mu_max, float(dt.values()), float(h.values()), E_nonK, E_K], "data")
+        dt.assign(max(0.01,0.5/grad_mu_max))
+        info_blue("t = {}".format(t))
+        info_blue("dt = {}".format(float(dt.values())))
+        info_blue("noise = {}".format(initial_noise))
+        ts.dump_stats(t, [grad_mu_max, float(dt.values()), float(h.values()), E_nonK, E_K, E_tot], "data")
 
     if tstep % parameters["checkpoint_intv"] == 0 or t >= T:
         save_checkpoint(tstep, t, geo_map.ref_mesh,

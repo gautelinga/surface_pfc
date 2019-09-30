@@ -56,7 +56,7 @@ class AlongStripedIC(StripedIC):
         super().__init__(alpha=0.0, q0=q0, amplitude=amplitude, **kwargs)
 
 
-# Class representing the intial conditions for manufactured solution
+# Initial conditions for manufactured solution
 class MMSIC(GenericIC):
     def __init__(self, u_, geo_map, **kwargs):
         self.map = geo_map
@@ -67,3 +67,13 @@ class MMSIC(GenericIC):
         # values[0] = 0.5*np.sin(x[0]/np.sqrt(2))
         # values[0] = self.map.psiMMS
         values[0] = (np.sin(x[1]/np.sqrt(2)))**2 + (np.sin(x[0]/np.sqrt(2)))**2
+
+
+# Circular stripes
+class CircularStripedIC(StripedIC):
+    def eval(self, values, x):
+        # angle alpha is not used for now
+        super().eval(values, x)
+        x_n = np.sqrt(x[0]**2+x[1]**2)
+        values[0] = self.amplitude*np.sin(self.q0*x_n)
+        # values[0] = np.sin(1.15*np.sqrt(x[0]**2+x[1]**2)/np.sqrt(2))
