@@ -1,9 +1,9 @@
 import dolfin as df
-from maps import TorusMap, SphereMap
+from maps import TorusMap, EllipsoidMap
 from common.io import Timeseries, save_checkpoint, load_checkpoint, \
     load_parameters
 from common.cmd import mpi_max, parse_command_line, info_blue, info_cyan
-from common.utilities import QuarticPotential, TimeStepSelector
+from common.utilities import QuarticPotential, TimeStepSelector, anneal_func
 from ics import StripedIC, RandomIC
 import os
 import ufl
@@ -11,7 +11,8 @@ import numpy as np
 
 
 parameters = dict(
-    R=30.,  # Radius
+    R=20.,  # Radius
+    Rz=40.,
     res=160,  # Resolution
     dt=1e-1,
     tau=0.2,
@@ -20,10 +21,11 @@ parameters = dict(
     h=0.0,
     M=1.0,  # Mobility
     restart_folder=None,
-    folder="results_pfcbc_sphere_anneal",
+    # folder="results_pfcbc_sphere_anneal",
+    folder="results_pfcbc_ellipsoid_anneal",
     t_0=0.0,
     tstep=0,
-    T=2000,
+    T=5000,
     checkpoint_intv=50,
     verbose=True,
     anneal=True,
@@ -38,16 +40,17 @@ if parameters["restart_folder"]:
     parameters.update(**cmd_kwargs)
 
 R = parameters["R"]
+Rz = parameters["Rz"]
 res = parameters["res"]
 dt = TimeStepSelector(parameters["dt"])
 tau = df.Constant(parameters["tau"])
 h = df.Constant(parameters["h"])
 M = df.Constant(parameters["M"])
 
-geo_map = SphereMap(R)
+geo_map = EllipsoidMap(R, R, Rz)
 geo_map.initialize(res, restart_folder=parameters["restart_folder"])
 
-W = geo_map.mixed_space((geo_map.ref_el,)*4)
+W = geo_map.mixed_space(4)
 
 # Define trial and test functions
 du = df.TrialFunction(W)
@@ -119,7 +122,7 @@ J = df.derivative(F, u_, du=u)
 problem = df.NonlinearVariationalProblem(F, u_, J=J)
 solver = df.NonlinearVariationalSolver(problem)
 solver.parameters["newton_solver"]["absolute_tolerance"] = 1e-8
-solver.parameters["newton_solver"]["relative_tolerance"] = 1e-5
+solver.parameters["newton_solver"]["relative_tolerance"] = 1e-6
 solver.parameters["newton_solver"]["maximum_iterations"] = 16
 # solver.parameters["newton_solver"]["linear_solver"] = "gmres"
 # solver.parameters["newton_solver"]["preconditioner"] = "default"
@@ -159,18 +162,10 @@ ts.add_scalar_field(E_2, "E_2")
 ts.add_scalar_field(df.sqrt(geo_map.gab[i, j]*mu_.dx(i)*mu_.dx(j)),
                     "abs_grad_mu")
 
-
-# Set tau
-def anneal_func(t, tau_0, tau_ramp, t_ramp):
-    dtau = (tau_0 - tau_ramp)/2
-    tau_avg = (tau_0 + tau_ramp)/2
-    k = np.pi/t_ramp
-    return dtau*np.cos(k*t) + tau_avg
-
-
 # Step in time
 ts.dump(tstep)
 
+initial_step = bool(parameters["restart_folder"] is None)
 while t < T:
     tstep += 1
     info_cyan("tstep = {}, time = {}".format(tstep, t))
@@ -186,6 +181,12 @@ while t < T:
                     parameters["tau"],
                     parameters["tau_ramp"],
                     parameters["t_ramp"]))
+
+        u_.assign(u_1)
+        Eout_0 = df.assemble(geo_map.form(E_0))
+        Eout_2 = df.assemble(geo_map.form(E_2))
+        E_before = Eout_0 + Eout_2
+
         try:
             solver.solve()
             converged = True
@@ -193,24 +194,36 @@ while t < T:
             info_blue("Did not converge. Chopping timestep.")
             dt.chop()
             info_blue("New timestep is: dt = {}".format(dt.get()))
+
+        Eout_0 = df.assemble(geo_map.form(E_0))
+        Eout_2 = df.assemble(geo_map.form(E_2))
+        E_after = Eout_0 + Eout_2
+        dE = E_after - E_before
+        if not initial_step and dE > 0.0:
+            dt.chop()
+            converged = False
+
+    initial_step = False
+
     # Update time with final dt value
     t += dt.get()
 
     if tstep % 1 == 0:
         ts.dump(t)
-        Eout_0 = df.assemble(geo_map.form(E_0))
-        Eout_2 = df.assemble(geo_map.form(E_2))
+
+        # Assigning timestep size according to grad_mu_max:
         grad_mu = ts.get_function("abs_grad_mu")
         grad_mu_max = mpi_max(grad_mu.vector().get_local())
-        # Assigning timestep size according to grad_mu_max:
         dt_prev = dt.get()
         dt.set(min(0.25/grad_mu_max, T-t))
         info_blue("dt = {}".format(dt.get()))
+
         ts.dump_stats(t,
                       [grad_mu_max, dt_prev, dt.get(),
                        float(h.values()),
                        Eout_0, Eout_2,
-                       Eout_0 + Eout_2, float(tau.values())],
+                       Eout_0 + Eout_2, float(tau.values()),
+                       dE],
                       "data")
 
     if tstep % parameters["checkpoint_intv"] == 0 or t >= T:

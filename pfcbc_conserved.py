@@ -182,8 +182,10 @@ while t < T:
     t += float(dt.values())
 
     u_1.assign(u_)
-    initial_noise = 0 # Usually O(1).
-    u_1.vector()[:] += np.random.normal(0,initial_noise/(1+0.02*t),len(u_1.vector().get_local())) # Annealing noise
+    initial_noise = 0  # Usually O(1).
+    u_1.vector()[:] += np.random.normal(
+        0, initial_noise/(1+0.02*t),
+        len(u_1.vector().get_local()))  # Annealing noise
     solver.solve()
 
     if tstep % 1 == 0:

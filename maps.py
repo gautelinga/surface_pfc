@@ -460,9 +460,13 @@ class GeoMap:
     def compute_pbc(self):
         self.pbc = None
 
-    def mixed_space(self, mixed_el):
+    def mixed_space(self, arg):
+        if isinstance(arg, int):
+            el_list = (self.ref_el,)*arg
+        else:
+            el_list = arg
         return df.FunctionSpace(self.ref_mesh,
-                                df.MixedElement(mixed_el),
+                                df.MixedElement(el_list),
                                 constrained_domain=self.pbc)
 
     def initialize_ref_space(self, res):

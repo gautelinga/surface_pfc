@@ -72,3 +72,11 @@ class TimeStepSelector(df.Constant):
 
     def chop(self):
         self.assign(self.get()/self.chop_factor)
+
+
+# Set tau
+def anneal_func(t, tau_0, tau_ramp, t_ramp):
+    dtau = (tau_0 - tau_ramp)/2
+    tau_avg = (tau_0 + tau_ramp)/2
+    k = np.pi/t_ramp
+    return dtau*np.cos(k*t) + tau_avg
