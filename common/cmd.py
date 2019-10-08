@@ -24,6 +24,8 @@ __all__ = ["mpi_comm", "mpi_barrier", "mpi_rank", "mpi_size", "mpi_is_root",
 def mpi_comm():
     return MPI.comm_world
 
+def mpi_any(a):
+    return bool(MPI.max(mpi_comm(), a))
 
 def mpi_barrier():
     MPI.barrier(mpi_comm())
