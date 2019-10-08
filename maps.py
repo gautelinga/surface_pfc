@@ -388,7 +388,7 @@ class GeoMap:
                                      [Ks_t_loc, Ks_s_loc]])
                 kappa_loc, u_loc = np.linalg.eig(Kmat_loc)
                 # Possible orderings of curvatures:
-                
+
                 # Absolute curvature: Gives discontinuous kappa_i, but
                 # is useful when only the most curved direction is
                 # relevant.
@@ -641,6 +641,30 @@ class SaddleMap(GeoMap):
         ref_mesh = mshr.generate_mesh(rect, res, "cgal")
         self.ref_mesh = ref_mesh
 
+class SaddleMapRound(GeoMap):
+    def __init__(self, R, a, b):
+        t, s = sp.symbols('t s', real=True)
+        x = t
+        y = s
+        z = a*t**2-b*s**2
+
+        t_min = -R
+        t_max = R
+        s_min = -R
+        s_max = R
+
+        ts = (t, s)
+        xyz = (x, y, z)
+        ts_min = (t_min, s_min)
+        ts_max = (t_max, s_max)
+        GeoMap.__init__(self, xyz, ts, ts_min, ts_max)
+
+    def compute_mesh(self, res):
+        import mshr
+        print("Using overloaded compute_mesh for Saddle geometry")
+        circ = mshr.Circle(df.Point(0,0), (self.t_max-self.t_min)/2)
+        ref_mesh = mshr.generate_mesh(circ, res, "cgal")
+        self.ref_mesh = ref_mesh
 
 class TorusMap(GeoMap):
     def __init__(self, R, r, verbose=False):
