@@ -73,10 +73,13 @@ def main():
         g_inv.append(g_inv_loc)
 
     costheta = df.Function(ref_spaces["psi"], name="costheta")
+    # Number of nodes:
     arrsiz = int(len(costheta.vector().get_local()))
-    print("Function vector size: ", arrsiz )
+    # Array to hold costheta^2 values for all runs:
     costhetas = np.zeros([arrsiz,Ntss])
+    # Number of random samples to perform per simulation
     nsamples=1000
+    # Array for randomly sampled costheta^2 values:
     costhetasamp=np.zeros([nsamples,Ntss])
     #xmin=
     for its, ts in enumerate(tss):
