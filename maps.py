@@ -615,6 +615,30 @@ class GaussianBumpMap(GeoMap):
         ref_mesh = mshr.generate_mesh(rect, res, "cgal")
         self.ref_mesh = ref_mesh
 
+class GaussianBumpMapRound(GeoMap):
+    def __init__(self, Lx, Ly, h, sigma, verbose=False):
+        t, s = sp.symbols('t s', real=True)
+        x = t
+        y = s
+        z = h * sp.exp(-(t**2+s**2)/(2*sigma**2))
+
+        t_min = -Lx/2
+        t_max = Lx/2
+        s_min = -Ly/2
+        s_max = Ly/2
+
+        ts = (t, s)
+        xyz = (x, y, z)
+        ts_min = (t_min, s_min)
+        ts_max = (t_max, s_max)
+        GeoMap.__init__(self, xyz, ts, ts_min, ts_max, verbose=verbose)
+
+    def compute_mesh(self, res):
+        self.info_verbose("Using overloaded compute_mesh for GaussianBump")
+	circ = mshr.Circle(df.Point(0,0), (self.t_max-self.t_min)/2)
+        ref_mesh = mshr.generate_mesh(circ, res, "cgal")
+        self.ref_mesh = ref_mesh
+
 
 class SaddleMap(GeoMap):
     def __init__(self, Lx, Ly, a, b, verbose=False):
