@@ -635,7 +635,7 @@ class GaussianBumpMapRound(GeoMap):
 
     def compute_mesh(self, res):
         self.info_verbose("Using overloaded compute_mesh for GaussianBump")
-	circ = mshr.Circle(df.Point(0,0), (self.t_max-self.t_min)/2)
+        circ = mshr.Circle(df.Point(0,0), (self.t_max-self.t_min)/2)
         ref_mesh = mshr.generate_mesh(circ, res, "cgal")
         self.ref_mesh = ref_mesh
 
