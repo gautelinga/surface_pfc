@@ -182,6 +182,7 @@ while t < T:
                     parameters["tau_ramp"],
                     parameters["t_ramp"]))
 
+        # Compute energy
         u_.assign(u_1)
         Eout_0 = df.assemble(geo_map.form(E_0))
         Eout_2 = df.assemble(geo_map.form(E_2))
