@@ -47,7 +47,7 @@ class GeoMap:
         self.map["ztt"] = sp.diff(self.map["zt"], self.t)
 
         for key in self.map.keys():
-            self.map[key] = sp.simplify(self.map[key])
+            self.map[key] = (self.map[key])
 
         # The metric tensor
         self.map["g_ss"] = (self.map["xs"]**2
@@ -59,60 +59,60 @@ class GeoMap:
         self.map["g_tt"] = (self.map["xt"]**2
                             + self.map["yt"]**2
                             + self.map["zt"]**2)
-        self.map["g_ss"] = sp.simplify(self.map["g_ss"])
-        self.map["g_st"] = sp.simplify(self.map["g_st"])
-        self.map["g_tt"] = sp.simplify(self.map["g_tt"])
+        self.map["g_ss"] = (self.map["g_ss"])
+        self.map["g_st"] = (self.map["g_st"])
+        self.map["g_tt"] = (self.map["g_tt"])
 
         self.map["g_det"] = (self.map["g_ss"]*self.map["g_tt"]
                              - self.map["g_st"]**2)
-        self.map["g_det"] = sp.simplify(self.map["g_det"])
+        self.map["g_det"] = (self.map["g_det"])
         self.map["g"] = abs(self.map["g_det"])
         self.map["sqrt_g"] = sp.sqrt(abs(self.map["g"]))
 
-        self.map["gss"] = sp.simplify(self.map["g_tt"]/self.map["g_det"])
-        self.map["gst"] = sp.simplify(-self.map["g_st"]/self.map["g_det"])
-        self.map["gtt"] = sp.simplify(self.map["g_ss"]/self.map["g_det"])
+        self.map["gss"] = (self.map["g_tt"]/self.map["g_det"])
+        self.map["gst"] = (-self.map["g_st"]/self.map["g_det"])
+        self.map["gtt"] = (self.map["g_ss"]/self.map["g_det"])
 
-        self.map["g_ss_s"] = sp.simplify(sp.diff(self.map["g_ss"], self.s))
-        self.map["g_ss_t"] = sp.simplify(sp.diff(self.map["g_ss"], self.t))
-        self.map["g_st_s"] = sp.simplify(sp.diff(self.map["g_st"], self.s))
-        self.map["g_st_t"] = sp.simplify(sp.diff(self.map["g_st"], self.t))
-        self.map["g_tt_s"] = sp.simplify(sp.diff(self.map["g_tt"], self.s))
-        self.map["g_tt_t"] = sp.simplify(sp.diff(self.map["g_tt"], self.t))
+        self.map["g_ss_s"] = (sp.diff(self.map["g_ss"], self.s))
+        self.map["g_ss_t"] = (sp.diff(self.map["g_ss"], self.t))
+        self.map["g_st_s"] = (sp.diff(self.map["g_st"], self.s))
+        self.map["g_st_t"] = (sp.diff(self.map["g_st"], self.t))
+        self.map["g_tt_s"] = (sp.diff(self.map["g_tt"], self.s))
+        self.map["g_tt_t"] = (sp.diff(self.map["g_tt"], self.t))
         self.info_verbose("Metric computed")
 
         # The normal
-        cross_x = sp.simplify(
+        cross_x = (
             self.map["yt"]*self.map["zs"] - self.map["ys"]*self.map["zt"])
-        cross_y = sp.simplify(
+        cross_y = (
             self.map["zt"]*self.map["xs"] - self.map["zs"]*self.map["xt"])
-        cross_z = sp.simplify(
+        cross_z = (
             self.map["xt"]*self.map["ys"] - self.map["xs"]*self.map["yt"])
-        cross_mag = sp.simplify(
+        cross_mag = (
             sp.sqrt(cross_x**2 + cross_y**2 + cross_z**2))
-        self.map["nx"] = sp.simplify(cross_x/cross_mag)
-        self.map["ny"] = sp.simplify(cross_y/cross_mag)
-        self.map["nz"] = sp.simplify(cross_z/cross_mag)
+        self.map["nx"] = (cross_x/cross_mag)
+        self.map["ny"] = (cross_y/cross_mag)
+        self.map["nz"] = (cross_z/cross_mag)
 
         # Curvature tensor
-        self.map["K_ss"] = sp.simplify(self.map["nx"]*self.map["xss"]
+        self.map["K_ss"] = (self.map["nx"]*self.map["xss"]
                                        + self.map["ny"]*self.map["yss"]
                                        + self.map["nz"]*self.map["zss"])
-        self.map["K_st"] = sp.simplify(self.map["nx"]*self.map["xst"]
+        self.map["K_st"] = (self.map["nx"]*self.map["xst"]
                                        + self.map["ny"]*self.map["yst"]
                                        + self.map["nz"]*self.map["zst"])
         self.map["K_ts"] = self.map["K_st"]
-        self.map["K_tt"] = sp.simplify(self.map["nx"]*self.map["xtt"]
+        self.map["K_tt"] = (self.map["nx"]*self.map["xtt"]
                                        + self.map["ny"]*self.map["ytt"]
                                        + self.map["nz"]*self.map["ztt"])
         self.info_verbose('K_ij computed, computing K^i_j ... ')
-        self.map["Ks_s"] = sp.simplify(self.map["gss"]*self.map["K_ss"]
+        self.map["Ks_s"] = (self.map["gss"]*self.map["K_ss"]
                                        + self.map["gst"]*self.map["K_ts"])
-        self.map["Ks_t"] = sp.simplify(self.map["gss"]*self.map["K_st"]
+        self.map["Ks_t"] = (self.map["gss"]*self.map["K_st"]
                                        + self.map["gst"]*self.map["K_tt"])
-        self.map["Kt_s"] = sp.simplify(self.map["gst"]*self.map["K_ss"]
+        self.map["Kt_s"] = (self.map["gst"]*self.map["K_ss"]
                                        + self.map["gtt"]*self.map["K_ts"])
-        self.map["Kt_t"] = sp.simplify(self.map["gst"]*self.map["K_st"]
+        self.map["Kt_t"] = (self.map["gst"]*self.map["K_st"]
                                        + self.map["gtt"]*self.map["K_tt"])
         self.info_verbose('K^i_j computed, computing K^ij ... ')
 
@@ -615,8 +615,8 @@ class GaussianBumpMap(GeoMap):
         ref_mesh = mshr.generate_mesh(rect, res, "cgal")
         self.ref_mesh = ref_mesh
 
-class GaussianBumpMapRound(GeoMap):
-    def __init__(self, Lx, Ly, h, sigma, verbose=False):
+class GaussianBumpMapPBC(GeoMap):
+    def __init__(self, Lx, Ly, h, sigma, double_periodic=True, verbose=False):
         t, s = sp.symbols('t s', real=True)
         x = t
         y = s
@@ -626,6 +626,34 @@ class GaussianBumpMapRound(GeoMap):
         t_max = Lx/2
         s_min = -Ly/2
         s_max = Ly/2
+
+        ts = (t, s)
+        xyz = (x, y, z)
+        ts_min = (t_min, s_min)
+        ts_max = (t_max, s_max)
+        self.double_periodic = double_periodic
+        GeoMap.__init__(self, xyz, ts, ts_min, ts_max, verbose=verbose)
+
+    def compute_pbc(self):
+        ts_min = (self.t_min, self.s_min)
+        ts_max = (self.t_max, self.s_max)
+        self.pbc = CylinderPBC(ts_min, ts_max,
+                               double_periodic=self.double_periodic)
+
+    def is_periodic_in_3d(self):
+        return self.double_periodic
+
+class GaussianBumpMapRound(GeoMap):
+    def __init__(self, R, h, sigma, verbose=False):
+        t, s = sp.symbols('t s', real=True)
+        x = t
+        y = s
+        z = h * sp.exp(-(t**2+s**2)/(2*sigma**2))
+
+        t_min = -R
+        t_max = R
+        s_min = -R
+        s_max = R
 
         ts = (t, s)
         xyz = (x, y, z)
@@ -664,6 +692,41 @@ class SaddleMap(GeoMap):
                               df.Point(self.t_max, self.s_max))
         ref_mesh = mshr.generate_mesh(rect, res, "cgal")
         self.ref_mesh = ref_mesh
+
+class BumpyMap(GeoMap):
+    def __init__(self, Lx, Ly, amplitudes, wavenumbers, verbose=False): # Lx, Ly, maximum amplitude, maximum wavenumber
+        t, s = sp.symbols('t s', real=True)
+        x = t
+        y = s
+        # Generate the height function:
+        z = 0
+        n_k = 0
+        for a in amplitudes:
+            #k -> 2*(np.random.random()-0.5)*k
+            k1 = wavenumbers[n_k]
+            k2 = wavenumbers[n_k+1]
+            k3 = wavenumbers[n_k+2]
+            k4 = wavenumbers[n_k+3]
+            z += a*sp.cos(k1*t+k2*s)*sp.cos(k3*t+k4*s)
+            n_k += 4
+
+        t_min = -Lx/2
+        t_max = Lx/2
+        s_min = -Lx/2
+        s_max = Lx/2
+
+        ts = (t, s)
+        xyz = (x, y, z)
+        ts_min = (t_min, s_min)
+        ts_max = (t_max, s_max)
+        GeoMap.__init__(self, xyz, ts, ts_min, ts_max, verbose=verbose)
+
+    # def compute_mesh(self, res):
+    #     self.info_verbose("Using overloaded compute_mesh for Bumpy geometry")
+    #     rect = mshr.Rectangle(df.Point(self.t_min, self.s_min),
+    #                           df.Point(self.t_max, self.s_max))
+    #     ref_mesh = mshr.generate_mesh(rect, res, "cgal")
+    #     self.ref_mesh = ref_mesh
 
 class SaddleMapRound(GeoMap):
     def __init__(self, R, a, b):
