@@ -152,8 +152,11 @@ class InterpolatedTimeSeries:
                                     geometry_address[0]), "r") as h5f:
             self.nodes = np.array(h5f[geometry_address[1]])
 
-        self.g = unpack_fields(self.geometry_folder, "g.xdmf")
-        self.g_inv = unpack_fields(self.geometry_folder, "g_inv.xdmf")
+        self.g_ab = unpack_fields(self.geometry_folder, "g_ab.xdmf")
+        self.gab = unpack_fields(self.geometry_folder, "gab.xdmf")
+        self.K_ab = unpack_fields(self.geometry_folder, "K_ab.xdmf")
+        self.xyzt = unpack_fields(self.geometry_folder, "xyzt.xdmf")
+        self.xyzs = unpack_fields(self.geometry_folder, "xyzs.xdmf")
 
         data = dict()
         for params_file in glob.glob(

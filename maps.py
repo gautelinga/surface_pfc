@@ -28,6 +28,7 @@ class GeoMap:
 
     def compute_geometry(self):
         # Simple derivatives
+        self.info_verbose("Computing derivatives")
         self.map["xs"] = sp.diff(self.map["x"], self.s)
         self.map["xt"] = sp.diff(self.map["x"], self.t)
         self.map["ys"] = sp.diff(self.map["y"], self.s)
@@ -36,6 +37,7 @@ class GeoMap:
         self.map["zt"] = sp.diff(self.map["z"], self.t)
 
         # Double derivatives
+        self.info_verbose("Computing double derivatives")
         self.map["xss"] = sp.diff(self.map["xs"], self.s)
         self.map["xst"] = sp.diff(self.map["xs"], self.t)
         self.map["xtt"] = sp.diff(self.map["xt"], self.t)
@@ -96,24 +98,26 @@ class GeoMap:
 
         # Curvature tensor
         self.map["K_ss"] = (self.map["nx"]*self.map["xss"]
-                                       + self.map["ny"]*self.map["yss"]
-                                       + self.map["nz"]*self.map["zss"])
+                            + self.map["ny"]*self.map["yss"]
+                            + self.map["nz"]*self.map["zss"])
         self.map["K_st"] = (self.map["nx"]*self.map["xst"]
-                                       + self.map["ny"]*self.map["yst"]
-                                       + self.map["nz"]*self.map["zst"])
+                            + self.map["ny"]*self.map["yst"]
+                            + self.map["nz"]*self.map["zst"])
         self.map["K_ts"] = self.map["K_st"]
         self.map["K_tt"] = (self.map["nx"]*self.map["xtt"]
-                                       + self.map["ny"]*self.map["ytt"]
-                                       + self.map["nz"]*self.map["ztt"])
+                            + self.map["ny"]*self.map["ytt"]
+                            + self.map["nz"]*self.map["ztt"])
+
         self.info_verbose('K_ij computed, computing K^i_j ... ')
         self.map["Ks_s"] = (self.map["gss"]*self.map["K_ss"]
-                                       + self.map["gst"]*self.map["K_ts"])
+                            + self.map["gst"]*self.map["K_ts"])
         self.map["Ks_t"] = (self.map["gss"]*self.map["K_st"]
-                                       + self.map["gst"]*self.map["K_tt"])
+                            + self.map["gst"]*self.map["K_tt"])
         self.map["Kt_s"] = (self.map["gst"]*self.map["K_ss"]
-                                       + self.map["gtt"]*self.map["K_ts"])
+                            + self.map["gtt"]*self.map["K_ts"])
         self.map["Kt_t"] = (self.map["gst"]*self.map["K_st"]
-                                       + self.map["gtt"]*self.map["K_tt"])
+                            + self.map["gtt"]*self.map["K_tt"])
+
         self.info_verbose('K^i_j computed, computing K^ij ... ')
 
         # Skipping "simplify" because it is exceedingly slow:
@@ -127,18 +131,8 @@ class GeoMap:
                            + self.map["gtt"]*self.map["Kt_t"])
         self.info_verbose('K^ij computed.')
         # Curvature tensor K^i_j as a matrix
-        self.map["Kmat"] = sp.Matrix([[self.map["Kt_t"],self.map["Kt_s"]], [self.map["Kt_s"],self.map["Ks_s"]]])
-        # self.map["Keigenvects"] = self.map["Kmat"].eigenvects()
-        # self.map["Keigenvals"] = self.map["Kmat"].eigenvals()
-        # # Save principal curvatures and principal directions:
-        # self.map["k1"] = self.map["Keigenvects"][0][0]
-        # self.map["u1"] = self.map["Keigenvects"][0][2][0]
-        # self.map["u1t"] = self.map["u1"][0]
-        # self.map["u1s"] = self.map["u1"][1]
-        # self.map["k2"] = self.map["Keigenvects"][1][0]
-        # self.map["u2"] = self.map["Keigenvects"][1][2][0]
-        # self.map["u2t"] = self.map["u2"][0]
-        # self.map["u2s"] = self.map["u2"][1]
+        self.map["Kmat"] = sp.Matrix([[self.map["Kt_t"], self.map["Kt_s"]],
+                                      [self.map["Kt_s"], self.map["Ks_s"]]])
         self.info_verbose("Curvature tensor computed")
 
         # Mean and Gaussian curvature (no simplify, too heavy)
@@ -173,20 +167,25 @@ class GeoMap:
                 2*self.map["g_st_t"]-self.map["g_tt_s"]))/2)
 
         self.evalf = dict()
-        for key in self.map.keys():
-            self.evalf[key] = sp.lambdify([self.t, self.s],
-                                          self.map[key], "numpy")
 
     def eval(self, key):  # , t_vals, s_vals):
+        if key not in self.evalf:
+            self.info_verbose("Lambdifying: {}".format(key))
+            self.evalf[key] = sp.lambdify([self.t, self.s],
+                                          self.map[key], "numpy")
         v = self.evalf[key](self.t_vals, self.s_vals)
         if isinstance(v, int) or isinstance(v, float):
             return v*np.ones_like(self.t_vals)
         else:
             return v
 
-    def get_function(self, key):  # , space, t_vals, s_vals):
+    def make_function(self, key):
         f = df.Function(self.S_ref)
         f.rename(key, "tmp")
+        return f
+
+    def get_function(self, key):  # , space, t_vals, s_vals):
+        f = self.make_function(key)
         F = self.eval(key)
         f.vector()[:] = F
         return f
@@ -209,6 +208,15 @@ class GeoMap:
             self.initialize_ref_space(res)
             self.initialize_metric()
 
+    def _dot_pointwise(self, a, b, key):
+        self.info_verbose("Computing pointwise: {}".format(key))
+        f = self.make_function(key)
+        f_vec = np.zeros_like(f.vector().get_local())
+        for ai, bi in zip(a, b):
+            f_vec[:] += ai.vector().get_local()*bi.vector().get_local()
+        f.vector()[:] = f_vec
+        return f
+
     def initialize_metric(self):  # , S_ref, t_vals, s_vals):
         self.g_tt = self.get_function("g_tt")
         self.g_st = self.get_function("g_st")
@@ -218,37 +226,59 @@ class GeoMap:
         self.gss = self.get_function("gss")
         self.sqrt_g = self.get_function("sqrt_g")
 
-        self.Ktt = self.get_function("Ktt")
-        self.Kts = self.get_function("Kts")
-        self.Kst = self.get_function("Kst")
-        self.Kss = self.get_function("Kss")
-
         self.K_tt = self.get_function("K_tt")
-        self.K_ts = self.get_function("K_ts")
+        # self.K_ts = self.get_function("K_ts")
         self.K_st = self.get_function("K_st")
         self.K_ss = self.get_function("K_ss")
 
-        self.Kt_t = self.get_function("Kt_t")
-        self.Kt_s = self.get_function("Kt_s")
-        self.Ks_t = self.get_function("Ks_t")
-        self.Ks_s = self.get_function("Ks_s")
+        self.Ks_s = self._dot_pointwise([self.gss, self.gst],
+                                        [self.K_ss, self.K_st],
+                                        "Ks_s")
+        self.Ks_t = self._dot_pointwise([self.gss, self.gst],
+                                        [self.K_st, self.K_tt],
+                                        "Ks_t")
+        self.Kt_s = self._dot_pointwise([self.gst, self.gtt],
+                                        [self.K_ss, self.K_st],
+                                        "Kt_s")
+        self.Kt_t = self._dot_pointwise([self.gst, self.gtt],
+                                        [self.K_st, self.K_tt],
+                                        "Kt_t")
 
-        # Curvature tensor as matrix
-        #self.Kmat = self.get_function("Kmat")
+        self.Kss = self._dot_pointwise([self.gss, self.gst],
+                                       [self.Ks_s, self.Ks_t],
+                                       "Kss")
+        self.Kst = self._dot_pointwise([self.gst, self.gtt],
+                                       [self.Ks_s, self.Ks_t],
+                                       "Kst")
+        self.Kts = self._dot_pointwise([self.gss, self.gst],
+                                       [self.Kt_s, self.Kt_t],
+                                       "Kts")
+        self.Ktt = self._dot_pointwise([self.gst, self.gtt],
+                                       [self.Kt_s, self.Kt_t],
+                                       "Ktt")
 
-        # Principal curvatures and directions:
-        # self.k1 = self.get_function("k1")
-        # self.k2 = self.get_function("k2")
-        # self.u1t = self.get_function("u1t")
-        # self.u1s = self.get_function("u1s")
-        # self.u1 = ufl.as_tensor([[self.u1t],
-        #                           [self.u1s]])
-        # self.u2t = self.get_function("u2t")
-        # self.u2s = self.get_function("u2s")
-        # self.u2 = ufl.as_tensor([[self.u2t],
-        #                           [self.u2s]])
-        self.K = self.get_function("K")
-        self.H = self.get_function("H")
+        self.K = self.make_function("K")
+        self.K.vector()[:] = (self.Ks_s.vector().get_local()
+                              * self.Kt_t.vector().get_local()
+                              - self.Ks_t.vector().get_local()
+                              * self.Kt_s.vector().get_local())
+
+        self.H = self.make_function("H")
+        self.H.vector()[:] = (self.Ks_s.vector().get_local()
+                              + self.Kt_t.vector().get_local())/2
+
+        # self.Kt_t = self.get_function("Kt_t")
+        # self.Kt_s = self.get_function("Kt_s")
+        # self.Ks_t = self.get_function("Ks_t")
+        # self.Ks_s = self.get_function("Ks_s")
+        
+        # self.Ktt = self.get_function("Ktt")
+        # self.Kts = self.get_function("Kts")
+        # self.Kst = self.get_function("Kst")
+        # self.Kss = self.get_function("Kss")
+
+        # self.K = self.get_function("K")
+        # self.H = self.get_function("H")
 
         self.Gs_ss = self.get_function("Gs_ss")
         self.Gs_st = self.get_function("Gs_st")
@@ -257,18 +287,17 @@ class GeoMap:
         self.Gt_st = self.get_function("Gt_st")
         self.Gt_tt = self.get_function("Gt_tt")
 
-        self.gab = ufl.as_tensor([[self.gtt, self.gst],
-                                  [self.gst, self.gss]])  # Inverse metric, g^ij
-        self.Kab = ufl.as_tensor([[self.Ktt, self.Kst],
-                                  [self.Kst, self.Kss]])  # K^{ij}
-        self.K_ab = ufl.as_tensor([[self.K_tt, self.K_st],
-                                   [self.K_st, self.K_ss]])  # K_{ij}
-        self.Ka_b = ufl.as_tensor([[self.Kt_t, self.Kt_s],
-                                   [self.Ks_t, self.Ks_s]])  # K^i_j
-        self.Ga_bc = ufl.as_tensor([[[self.Gt_tt, self.Gt_st],
-                                     [self.Gt_st, self.Gt_ss]],
-                                    [[self.Gs_tt, self.Gs_st],
-                                     [self.Gs_st, self.Gs_ss]]])  # Christoffel symbols
+        _gab = [[self.gtt, self.gst], [self.gst, self.gss]]
+        _Kab = [[self.Ktt, self.Kst], [self.Kst, self.Kss]]
+        _K_ab = [[self.K_tt, self.K_st], [self.K_st, self.K_ss]]
+        _Ka_b = [[self.Kt_t, self.Kt_s], [self.Ks_t, self.Ks_s]]
+        _Ga_bc = [[[self.Gt_tt, self.Gt_st], [self.Gt_st, self.Gt_ss]],
+                  [[self.Gs_tt, self.Gs_st], [self.Gs_st, self.Gs_ss]]]
+        self.gab = ufl.as_tensor(_gab)  # Inverse metric, g^ij
+        self.Kab = ufl.as_tensor(_Kab)  # K^{ij}
+        self.K_ab = ufl.as_tensor(_K_ab)  # K_{ij}
+        self.Ka_b = ufl.as_tensor(_Ka_b)  # K^i_j
+        self.Ga_bc = ufl.as_tensor(_Ga_bc)  # Christoffel symbols
 
         # We assume the format
         # ufl.as_tensor([[[ttt, tts], [tst, tss]], [[stt, sts], [sst, sss]]])
@@ -344,99 +373,34 @@ class GeoMap:
         xyz()
         return xyz
 
+    def dcoords(self):
+        xt = self.get_function("xt")
+        yt = self.get_function("yt")
+        zt = self.get_function("zt")
+        xs = self.get_function("xs")
+        ys = self.get_function("ys")
+        zs = self.get_function("zs")
+        xyzt = NdFunction([xt, yt, zt], name="xyzt")
+        xyzs = NdFunction([xs, ys, zs], name="xyzs")
+        xyzt()
+        xyzs()
+        return xyzt, xyzs
+
     def metric_tensor(self):
-        gtt = self.get_function("gtt")
-        gst = self.get_function("gst")
-        gss = self.get_function("gss")
-        g = NdFunction([gtt, gst, gss], name="g")
+        g = NdFunction([self.g_tt, self.g_st, self.g_ss], name="g_ab")
         g()
         return g
 
     def metric_tensor_inv(self):
-        g_tt = self.get_function("g_tt")
-        g_st = self.get_function("g_st")
-        g_ss = self.get_function("g_ss")
-        g_inv = NdFunction([g_tt, g_st, g_ss], name="g_inv")
+        g_inv = NdFunction([self.gtt, self.gst, self.gss], name="gab")
         g_inv()
         return g_inv
 
-    def get_curvaturematrix(self):
-        Kt_t = self.get_function("Kt_t")
-        Kt_s = self.get_function("Kt_s")
-        Ks_t = self.get_function("Ks_t")
-        Ks_s = self.get_function("Ks_s")
-
-        Kt_t_arr = Kt_t.vector().get_local()
-        Kt_s_arr = Kt_s.vector().get_local()
-        Ks_t_arr = Ks_t.vector().get_local()
-        Ks_s_arr = Ks_s.vector().get_local()
-
-        kappa1_arr = Ks_s.vector().get_local()  # Fiducial initiation
-        kappa2_arr = Ks_s.vector().get_local()  # Fiducial initiation
-        u1t_arr = Ks_s.vector().get_local()  # Fiducial initiation
-        u1s_arr = Ks_s.vector().get_local()  # Fiducial initiation
-        u2t_arr = Ks_s.vector().get_local()  # Fiducial initiation
-        u2s_arr = Ks_s.vector().get_local()  # Fiducial initiation
-        theta1_arr = Ks_s.vector().get_local()  # Fiducial initiation
-        theta2_arr = Ks_s.vector().get_local()  # Fiducial initiation
-
-        i = 0
-        for Kt_t_loc, Kt_s_loc, Ks_t_loc, Ks_s_loc in zip(
-                Kt_t_arr, Kt_s_arr, Ks_t_arr, Ks_s_arr):
-            try:
-                Kmat_loc = np.array([[Kt_t_loc, Kt_s_loc],
-                                     [Ks_t_loc, Ks_s_loc]])
-                kappa_loc, u_loc = np.linalg.eig(Kmat_loc)
-                # Possible orderings of curvatures:
-
-                # Absolute curvature: Gives discontinuous kappa_i, but
-                # is useful when only the most curved direction is
-                # relevant.
-
-                # Signed curvature: Gives continuous kappa_i, but
-                # places emphasis on something rather irrelevant,
-                # namly the sign of the curvature.
-
-                # if abs(kappa_loc[0]) > abs(kappa_loc[1]):
-                if kappa_loc[0] > kappa_loc[1]:
-                    kappa1_arr[i] = kappa_loc[0]
-                    kappa2_arr[i] = kappa_loc[1]
-                    u1t_arr[i] = u_loc[0, 0]
-                    u1s_arr[i] = u_loc[1, 0]
-                    u2t_arr[i] = u_loc[0, 1]
-                    u2s_arr[i] = u_loc[1, 1]
-                else:
-                    kappa1_arr[i] = kappa_loc[1]
-                    kappa2_arr[i] = kappa_loc[0]
-                    u1t_arr[i] = u_loc[0, 1]
-                    u1s_arr[i] = u_loc[1, 1]
-                    u2t_arr[i] = u_loc[0, 0]
-                    u2s_arr[i] = u_loc[1, 0]
-                theta1_arr[i] = np.arctan2(u1s_arr[i], u1t_arr[i])
-                theta2_arr[i] = np.arctan2(u2s_arr[i], u2t_arr[i])
-            except:
-                kappa1_arr[i] = 0
-                kappa2_arr[i] = 0
-
-                u1t_arr[i] = 0
-                u1s_arr[i] = 0
-                u2t_arr[i] = 0
-                u2s_arr[i] = 0
-
-                theta1_arr[i] = 0
-                theta2_arr[i] = 0
-            i += 1
-        kappa1 = df.Function(self.S_ref)
-        kappa1.vector().set_local(kappa1_arr)
-        kappa2 = df.Function(self.S_ref)
-        kappa2.vector().set_local(kappa2_arr)
-
-        theta1 = df.Function(self.S_ref)
-        theta1.vector().set_local(theta1_arr)
-        theta2 = df.Function(self.S_ref)
-        theta2.vector().set_local(theta2_arr)
-
-        return kappa1, kappa2, theta1, theta2
+    def curvature_tensor(self):
+        K_ab = NdFunction([self.K_tt, self.K_st, self.K_ss],
+                          name="K_ab")
+        K_ab()
+        return K_ab
 
     def normal(self):
         nx = self.get_function("nx")
@@ -615,6 +579,7 @@ class GaussianBumpMap(GeoMap):
         ref_mesh = mshr.generate_mesh(rect, res, "cgal")
         self.ref_mesh = ref_mesh
 
+
 class GaussianBumpMapPBC(GeoMap):
     def __init__(self, Lx, Ly, h, sigma, double_periodic=True, verbose=False):
         t, s = sp.symbols('t s', real=True)
@@ -643,6 +608,7 @@ class GaussianBumpMapPBC(GeoMap):
     def is_periodic_in_3d(self):
         return self.double_periodic
 
+
 class GaussianBumpMapRound(GeoMap):
     def __init__(self, R, h, sigma, verbose=False):
         t, s = sp.symbols('t s', real=True)
@@ -663,7 +629,7 @@ class GaussianBumpMapRound(GeoMap):
 
     def compute_mesh(self, res):
         self.info_verbose("Using overloaded compute_mesh for GaussianBump")
-        circ = mshr.Circle(df.Point(0,0), (self.t_max-self.t_min)/2)
+        circ = mshr.Circle(df.Point(0, 0), (self.t_max-self.t_min)/2)
         ref_mesh = mshr.generate_mesh(circ, res, "cgal")
         self.ref_mesh = ref_mesh
 
@@ -693,8 +659,10 @@ class SaddleMap(GeoMap):
         ref_mesh = mshr.generate_mesh(rect, res, "cgal")
         self.ref_mesh = ref_mesh
 
+
 class BumpyMap(GeoMap):
-    def __init__(self, Lx, Ly, amplitudes, wavenumbers, verbose=False): # Lx, Ly, maximum amplitude, maximum wavenumber
+    def __init__(self, Lx, Ly, amplitudes, wavenumbers, verbose=False):
+        # Lx, Ly, maximum amplitude, maximum wavenumber
         t, s = sp.symbols('t s', real=True)
         x = t
         y = s
@@ -728,6 +696,54 @@ class BumpyMap(GeoMap):
     #     ref_mesh = mshr.generate_mesh(rect, res, "cgal")
     #     self.ref_mesh = ref_mesh
 
+
+class RoughMap(GeoMap):
+    def __init__(self, Lx, Ly, amplitude, modes_file,
+                 double_periodic=True,
+                 verbose=False):
+        # Lx, Ly, maximum amplitude, maximum wavenumber
+        t, s = sp.symbols('t s', real=True)
+        x = t
+        y = s
+
+        t_min = -Lx/2
+        t_max = Lx/2
+        s_min = -Lx/2
+        s_max = Lx/2
+
+        # Generate the height function
+        z = 0
+        modes_data = np.loadtxt(modes_file)
+        i_ = modes_data[:, 0].astype(int)
+        k_ = modes_data[:, 1].astype(int)
+        a_ = modes_data[:, 2]
+        b_ = modes_data[:, 3]
+        abnorm = np.sqrt(np.sum(a_**2 + b_**2))
+        a_ /= abnorm
+        b_ /= abnorm
+
+        for i, k, a, b in zip(i_, k_, a_, b_):
+            phi_i = 2*np.pi*i*t/(t_max-t_min)
+            phi_k = 2*np.pi*k*s/(s_max-s_min)
+            z += amplitude*(a * sp.cos(phi_i + phi_k)
+                            + b * sp.sin(phi_i + phi_k))
+
+        ts = (t, s)
+        xyz = (x, y, z)
+        ts_min = (t_min, s_min)
+        ts_max = (t_max, s_max)
+        self.double_periodic = True
+        GeoMap.__init__(self, xyz, ts, ts_min, ts_max, verbose=verbose)
+
+    def compute_pbc(self):
+        ts_min = (self.t_min, self.s_min)
+        ts_max = (self.t_max, self.s_max)
+        self.pbc = CylinderPBC(ts_min, ts_max,
+                               double_periodic=self.double_periodic)
+
+    def is_periodic_in_3d(self):
+        return self.double_periodic
+
 class SaddleMapRound(GeoMap):
     def __init__(self, R, a, b):
         t, s = sp.symbols('t s', real=True)
@@ -752,6 +768,7 @@ class SaddleMapRound(GeoMap):
         circ = mshr.Circle(df.Point(0,0), (self.t_max-self.t_min)/2)
         ref_mesh = mshr.generate_mesh(circ, res, "cgal")
         self.ref_mesh = ref_mesh
+
 
 class TorusMap(GeoMap):
     def __init__(self, R, r, verbose=False):

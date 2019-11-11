@@ -36,7 +36,17 @@ def dump_coords(geo_map, folder="", name="xyz"):
             xyz[:, :] = xyz_new
 
 
-def dump_metric_tensor(geo_map, folder="", name="g"):
+def dump_dcoords(geo_map, folder="", name="xyz"):
+    dxyz = dict([(i, xyzi) for i, xyzi in zip(["t", "s"], geo_map.dcoords())])
+    for i, xyzi in dxyz.items():
+        filename = os.path.join(folder, "{}{}.xdmf".format(name, i))
+        with df.XDMFFile(mpi_comm(), filename) as xdmff:
+            xdmff.parameters["rewrite_function_mesh"] = False
+            xdmff.parameters["flush_output"] = True
+            xdmff.write(xyzi)
+
+
+def dump_metric_tensor(geo_map, folder="", name="g_ab"):
     filename = os.path.join(folder, "{}.xdmf".format(name))
     g = geo_map.metric_tensor()
     with df.XDMFFile(mpi_comm(), filename) as xdmff:
@@ -45,7 +55,7 @@ def dump_metric_tensor(geo_map, folder="", name="g"):
         xdmff.write(g)
 
 
-def dump_metric_tensor_inv(geo_map, folder="", name="g_inv"):
+def dump_metric_tensor_inv(geo_map, folder="", name="gab"):
     # Is it necessary to dump both?
     filename = os.path.join(folder, "{}.xdmf".format(name))
     g_inv = geo_map.metric_tensor_inv()
@@ -53,6 +63,15 @@ def dump_metric_tensor_inv(geo_map, folder="", name="g_inv"):
         xdmff.parameters["rewrite_function_mesh"] = False
         xdmff.parameters["flush_output"] = True
         xdmff.write(g_inv)
+
+
+def dump_curvature_tensor(geo_map, folder="", name="K_ab"):
+    filename = os.path.join(folder, "{}.xdmf".format(name))
+    K_ab = geo_map.curvature_tensor()
+    with df.XDMFFile(mpi_comm(), filename) as xdmff:
+        xdmff.parameters["rewrite_function_mesh"] = False
+        xdmff.parameters["flush_output"] = True
+        xdmff.write(K_ab)
 
 
 def makedirs_safe(folder):
@@ -120,9 +139,11 @@ class Timeseries:
             self.folder = restart_folder.split("Checkpoint")[0]
         geofolder = os.path.join(self.folder, "Geometry")
         dump_coords(geo_map, folder=geofolder)
+        dump_dcoords(geo_map, folder=geofolder)
         dump_xdmf(geo_map.normal(), folder=geofolder)
         dump_metric_tensor(geo_map, folder=geofolder)
         dump_metric_tensor_inv(geo_map, folder=geofolder)
+        dump_curvature_tensor(geo_map, folder=geofolder)
 
         self.files = dict()
         for field in self.fields:
