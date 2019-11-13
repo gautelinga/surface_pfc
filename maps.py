@@ -349,7 +349,7 @@ class GeoMap:
     def CovD10(self, V):
         """ Takes covariant derivative of a (1,0) tensor V -- a vector. """
         # Christoffel symbols: Ga_bc[i,j,k]
-        i, j, k = ufl.Index(), ufl.Index(), ufl.Index(), ufl.Index()
+        i, j, k = ufl.Index(), ufl.Index(), ufl.Index()
         nablaV = ufl.as_tensor(V[i].dx(j) + self.Ga_bc[i, j, k]*V[k], (i, j))
         return nablaV
 
@@ -358,31 +358,35 @@ class GeoMap:
         one-form."""
         # Christoffel symbols: Ga_bc[i,j,k]
         i, j, k = ufl.Index(), ufl.Index(), ufl.Index()
-        nablaW = ufl.as_tensor(W[i].dx(j) - self.Ga_bc[k, j, i]*W[k], (i, j))
+        nablaW = ufl.as_tensor(W[i].dx(j)
+                               - self.Ga_bc[k, j, i] * W[k], (i, j))
         return nablaW
 
     def CovD02(self, T):
         """ Takes covariant derivative of a (0,2) tensor T. """
         # Christoffel symbols: Ga_bc[i,j,k]
         i, j, k, l = ufl.Index(), ufl.Index(), ufl.Index(), ufl.Index()
-        nablaT = ufl.as_tensor(T[i, j].dx(k) - self.Ga_bc[l, k, i]*T[l, j]
-                               - self.Ga_bc[l, k, j]*T[i, l], (i, j, k))
+        nablaT = ufl.as_tensor(T[i, j].dx(k)
+                               - self.Ga_bc[l, k, i] * T[l, j]
+                               - self.Ga_bc[l, k, j] * T[i, l], (i, j, k))
         return nablaT
 
     def CovD11(self, T):
         """ Takes covariant derivative of a (1,1) tensor T. """
         # Christoffel symbols: Ga_bc[i,j,k]
         i, j, k, l = ufl.Index(), ufl.Index(), ufl.Index(), ufl.Index()
-        nablaT = ufl.as_tensor(T[i, j].dx(k) + self.Ga_bc[i, k, l]*T[l, j]
-                               - self.Ga_bc[l, k, j]*T[i, l], (i, j, k))
+        nablaT = ufl.as_tensor(T[i, j].dx(k)
+                               + self.Ga_bc[i, k, l] * T[l, j]
+                               - self.Ga_bc[l, k, j] * T[i, l], (i, j, k))
         return nablaT
 
     def CovD20(self, T):
         """ Takes covariant derivative of a (2,0) tensor T. """
         # Christoffel symbols: Ga_bc[i,j,k]
         i, j, k, l = ufl.Index(), ufl.Index(), ufl.Index(), ufl.Index()
-        nablaT = ufl.as_tensor(T[i, j].dx(k) + self.Ga_bc[i, k, l]*T[l, j]
-                               + self.Ga_bc[j, k, l]*T[i, l], (i, j, k))
+        nablaT = ufl.as_tensor(T[i, j].dx(k)
+                               + self.Ga_bc[i, k, l] * T[l, j]
+                               + self.Ga_bc[j, k, l] * T[i, l], (i, j, k))
         return nablaT
 
     def LB00(self, psi):
@@ -393,43 +397,33 @@ class GeoMap:
         LBpsi = self.gab[i, j] * ddpsi[i, j]
         return LBpsi
 
-    def surfdot(self, u, v):
+    def dot(self, u, v):
         i, j = ufl.Index(), ufl.Index()
-        return self.gab[i, j]*u[i]*v[j]
+        return self.g_ab[i, j] * u[i] * v[j]
 
     def dotgrad(self, u, v):
         i, j = ufl.Index(), ufl.Index()
-        return self.gab[i, j]*u.dx(i)*v.dx(j)
+        return self.gab[i, j] * u.dx(i) * v.dx(j)
 
     def dotcurvgrad(self, u, v):
         i, j = ufl.Index(), ufl.Index()
         return self.Kab[i, j]*u.dx(i)*v.dx(j)
+
+    def inner(self, A, B):
+        i, j, k, l = ufl.Index(), ufl.Index(), ufl.Index(), ufl.Index()
+        return self.g_ab[i, k]*self.g_ab[j, l]*A[i, j]*B[k, l]
 
     def form(self, integrand):
         return integrand*self.sqrt_g*self.dS_ref
 
     def coords(self):
         # NOTE: Doesn't work for geometries that are periodic in 3d
-        # x = self.get_function("x")
-        # y = self.get_function("y")
-        # z = self.get_function("z")
-        # xyz = NdFunction([x, y, z], name="xyz")
         xyz = NdFunction([self.get_function(xi) for xi in self.AXIS],
                          name="xyz")
         xyz()
         return xyz
 
     def dcoords(self):
-        # xt = self.get_function("xt")
-        # yt = self.get_function("yt")
-        # zt = self.get_function("zt")
-        # xs = self.get_function("xs")
-        # ys = self.get_function("ys")
-        # zs = self.get_function("zs")
-        # xyzt = NdFunction([xt, yt, zt], name="xyzt")
-        # xyzs = NdFunction([xs, ys, zs], name="xyzs")
-        # xyzt()
-        # xyzs()
         dxyz = [None]*len(self.AXIS_REF)
         for dj, j in enumerate(self.AXIS_REF):
             dxyz[dj] = NdFunction([self.get_function(xi + "_," + j)
@@ -439,10 +433,6 @@ class GeoMap:
         return dxyz
 
     def metric_tensor(self):
-        # g_ab = NdFunction([self.g_tt, self.g_st, self.g_ss],
-        #                   name="g_ab")
-        # g_ab = NdFunction([self._g["_tt"], self._g["_st"], self._g["_ss"]],
-        #                  name="g_ab")
         g_ab = AssignedTensorFunction([self._g["_" + j + k]
                                        for j, k in product(
                                            self.AXIS_REF, self.AXIS_REF)],
@@ -451,10 +441,6 @@ class GeoMap:
         return g_ab
 
     def metric_tensor_inv(self):
-        # gab = NdFunction([self.gtt, self.gst, self.gss],
-        #                  name="gab")
-        # gab = NdFunction([self._g["^tt"], self._g["^st"], self._g["^ss"]],
-        #                  name="gab")
         gab = AssignedTensorFunction([self._g["^" + j + k]
                                       for j, k in product(
                                           self.AXIS_REF, self.AXIS_REF)],
@@ -463,10 +449,6 @@ class GeoMap:
         return gab
 
     def curvature_tensor(self):
-        # K_ab = NdFunction([self.K_tt, self.K_st, self.K_ss],
-        #                   name="K_ab")
-        # K_ab = NdFunction([self._K["_tt"], self._K["_st"], self._K["_ss"]],
-        #                   name="K_ab")
         K_ab = AssignedTensorFunction([self._K["_" + j + k]
                                        for j, k in product(
                                                self.AXIS_REF, self.AXIS_REF)],
@@ -475,10 +457,6 @@ class GeoMap:
         return K_ab
 
     def normal(self):
-        # nx = self.get_function("nx")
-        # ny = self.get_function("ny")
-        # nz = self.get_function("nz")
-        # n = NdFunction([nx, ny, nz], name="n")
         n = NdFunction([self.get_function("n_" + xi) for xi in self.AXIS],
                        name="n")
         n()
@@ -494,11 +472,6 @@ class GeoMap:
             [df.Point(*[self.r_ref_min[j] for j in self.AXIS_REF]),
              df.Point(*[self.r_ref_max[j] for j in self.AXIS_REF])],
             [Nd*res for Nd in N], df.cpp.mesh.CellType.Type.triangle)
-        # N = int(np.ceil((self.t_max-self.t_min)/(self.s_max-self.s_min)))
-        # ref_mesh = df.RectangleMesh.create(
-        #     [df.Point(self.t_min, self.s_min),
-        #      df.Point(self.t_max, self.s_max)],
-        #     [N*res, res], df.cpp.mesh.CellType.Type.triangle)
         self.ref_mesh = ref_mesh
 
     def recompute_mesh(self, res):
@@ -516,11 +489,18 @@ class GeoMap:
                                 df.MixedElement(el_list),
                                 constrained_domain=self.pbc)
 
-    def initialize_ref_space(self, res):
+    def initialize_ref_space(self, res, scalar_order=1, vector_order=2):
         self.dS_ref = df.Measure("dx", domain=self.ref_mesh)
 
-        self.ref_el = df.FiniteElement("Lagrange", self.ref_mesh.ufl_cell(), 1)
-        self.S_ref = df.FunctionSpace(self.ref_mesh, self.ref_el,
+        self.ref_el = df.FiniteElement("Lagrange", self.ref_mesh.ufl_cell(),
+                                       scalar_order)
+        self.ref_vel = df.VectorElement("Lagrange", self.ref_mesh.ufl_cell(),
+                                        vector_order)
+        self.S_ref = df.FunctionSpace(self.ref_mesh,
+                                      self.ref_el,
+                                      constrained_domain=self.pbc)
+        self.V_ref = df.FunctionSpace(self.ref_mesh,
+                                      self.ref_el,
                                       constrained_domain=self.pbc)
 
         self.r_ref_vals = dict()
@@ -529,14 +509,6 @@ class GeoMap:
                 df.Expression("x[{}]".format(dj), degree=1),
                 self.S_ref)
             self.r_ref_vals[j] = Rj_ref_vals.vector().get_local()
-
-        # T_vals = df.interpolate(df.Expression("x[0]", degree=1),
-        #                         self.S_ref)
-        # S_vals = df.interpolate(df.Expression("x[1]", degree=1),
-        #                         self.S_ref)
-
-        # self.t_vals = T_vals.vector().get_local()
-        # self.s_vals = S_vals.vector().get_local()
 
     def local_area(self):
         local_area = df.project(self.sqrt_g*df.CellVolume(self.ref_mesh),
