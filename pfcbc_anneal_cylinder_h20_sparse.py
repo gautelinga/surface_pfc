@@ -204,7 +204,7 @@ while t < T:
         Eout_2 = df.assemble(geo_map.form(E_2))
         E_after = Eout_0 + Eout_2
         dE = E_after - E_before
-        if not initial_step and dE > 0.0:
+        if not initial_step and dE > 10.0:
             dt.chop()
             converged = False
 
@@ -217,7 +217,7 @@ while t < T:
     grad_mu = df.project(grad_mu_ufl, geo_map.S_ref)
     grad_mu_max = mpi_max(grad_mu.vector().get_local())
     dt_prev = dt.get()
-    dt.set(min(min(0.25/grad_mu_max, T-t),parameters["t_ramp"]/200) )
+    dt.set(min(min(0.25/grad_mu_max, T-t), parameters["t_ramp"]/200))
     info_blue("dt = {}".format(dt.get()))
 
     if tstep % 100 == 0 or np.floor(t/1000)-np.floor(t_prev/1000) > 0:

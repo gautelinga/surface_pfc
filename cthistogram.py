@@ -106,10 +106,10 @@ def main():
         costheta_intp = interpolate_nonmatching_mesh(costheta_loc,
                                                      ref_spaces["psi"])
         costheta.vector()[:] += costheta_intp.vector().get_local()/Ntss
-        costhetas[:,its] = costheta_intp.vector().get_local()
-        #print(costheta(df.Point(0,0)))
-        t_coords=df.interpolate(df.Expression("x[0]", degree=2), ts.function_space)
-        s_coords=df.interpolate(df.Expression("x[1]", degree=2), ts.function_space)
+        costhetas[:, its] = costheta_intp.vector().get_local()
+        # print(costheta(df.Point(0,0)))
+        t_coords = df.interpolate(df.Expression("x[0]", degree=2), ts.function_space)
+        s_coords = df.interpolate(df.Expression("x[1]", degree=2), ts.function_space)
         t_min = min(t_coords.vector())
         t_max = max(t_coords.vector())
         s_min = min(s_coords.vector())
