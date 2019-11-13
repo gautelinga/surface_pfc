@@ -40,6 +40,11 @@ attrib_vector = """
         <DataItem Dimensions="{num_vert} 3" Format="HDF">{field_filename}:{field_loc}</DataItem>
       </Attribute>"""
 
+attrib_tensor = """
+      <Attribute Name="{field}" AttributeType="Tensor" Center="Node">
+        <DataItem Dimensions="{num_vert} 9" Format="HDF">{field_filename}:{field_loc}</DataItem>
+      </Attribute>"""
+
 grid_end = """
       </Grid>"""
 
@@ -136,7 +141,7 @@ def write_combined_xdmf(field_filenames, xyz_filename):
      geometry_shape, topology_shape, xyz_shape,
      topology_type, nodes_per_element) = parse_xyz_xdmf(xyz_filename)
 
-    is_vector = dict()
+    data_type = dict()
     dsets = dict()
     for filename in field_filenames:
         dsets_loc = parse_timeseries_xdmf(filename)
@@ -148,7 +153,7 @@ def write_combined_xdmf(field_filenames, xyz_filename):
 
     for field in dsets.keys():
         dsets_loc_keys = list(dsets[field].keys())
-        is_vector[field] = dsets[field][dsets_loc_keys[0]][1] == "Vector"
+        data_type[field] = dsets[field][dsets_loc_keys[0]][1]
 
     keys = dict(
         name="Timeseries",
@@ -172,7 +177,8 @@ def write_combined_xdmf(field_filenames, xyz_filename):
 
     for field_name in field_names:
         for i, (t, a) in enumerate(dsets[field_name].items()):
-            assert(t == times[i])
+            # assert(t == times[i])
+            pass
 
     for i, time in enumerate(times):
         if is_1st:
@@ -187,10 +193,14 @@ def write_combined_xdmf(field_filenames, xyz_filename):
             dset_time_max = max(dsets[field].keys())
             dset = dsets[field][min(time, dset_time_max)]
             field_folder, field_filename, field_loc = dset[0]
-            if not is_vector[field]:
+            if data_type[field] == "Scalar":
                 attrib = attrib_scalar
-            else:
+            elif data_type[field] == "Vector":
                 attrib = attrib_vector
+            elif data_type[field] == "Tensor":
+                attrib = attrib_tensor
+            else:
+                exit("Unrecognized data type!")
 
             text += attrib.format(field=field,
                                   field_filename=os.path.join(

@@ -11,15 +11,15 @@ import numpy as np
 
 
 parameters = dict(
-    Lx=12*20*np.sqrt(2),
-    Ly=12*20*np.sqrt(2),
-    H=40.,
+    Lx=6*20*np.sqrt(2),
+    Ly=6*20*np.sqrt(2),
+    H=10.,
     res=220,  # Resolution
     dt=1e-1,
     tau=0.2,
     t_ramp=500.,
-    tau_ramp=0.99,
-    h=8.0,
+    tau_ramp=0.95,
+    h=2.0,
     M=1.0,  # Mobility
     restart_folder=None,
     # folder="results_pfcbc_sphere_anneal",
@@ -109,7 +109,6 @@ taufunction = tau
 #dw_lin = w.derivative_linearized(psi, psi_1, taufunction)
 #dw_lin = w.derivative_linearized(psi, psi_1, tau)
 
-
 #dw_lin = w.derivative_linearized(psi, psi_1, tau)
 dw_stab = w.derivative_stab(psi_, psi_1, taufunction)
 
@@ -151,7 +150,7 @@ problem = df.NonlinearVariationalProblem(F, u_, J=J)
 solver = df.NonlinearVariationalSolver(problem)
 solver.parameters["newton_solver"]["absolute_tolerance"] = 1e-8
 solver.parameters["newton_solver"]["relative_tolerance"] = 1e-6
-solver.parameters["newton_solver"]["maximum_iterations"] = 6
+solver.parameters["newton_solver"]["maximum_iterations"] = 10
 # solver.parameters["newton_solver"]["linear_solver"] = "gmres"
 # solver.parameters["newton_solver"]["preconditioner"] = "default"
 # solver.parameters["newton_solver"]["krylov_solver"]["nonzero_initial_guess"] = True
@@ -230,7 +229,7 @@ while t < T:
             Eout_2 = df.assemble(geo_map.form(E_2))
             E_after = Eout_0 + Eout_2
             dE = E_after - E_before
-            if not initial_step and dE > 1e-1:
+            if not initial_step and dE > 1e-1 and False:
                 info_blue("Converged, but energy increased. Chopping timestep.")
                 info_blue("E_before = {}".format(E_before))
                 info_blue("E_after  = {}".format(E_after))
@@ -251,7 +250,7 @@ while t < T:
     dt.set(min(min(0.25/grad_mu_max, T-t), parameters["t_ramp"]/100))
     info_blue("dt = {}".format(dt.get()))
 
-    if tstep % 100 == 0 or np.floor(t/1000)-np.floor(t_prev/1000) > 0:
+    if tstep % 5 == 0 or np.floor(t/1000)-np.floor(t_prev/1000) > 0:
         ts.dump(t)
 
         # Assigning timestep size according to grad_mu_max:
@@ -261,13 +260,13 @@ while t < T:
         #dt.set(min(min(0.25/grad_mu_max, T-t),parameters["t_ramp"]/100) )
         #info_blue("dt = {}".format(dt.get()))
 
-        ts.dump_stats(t,
-                      [grad_mu_max, dt_prev, dt.get(),
-                       float(h.values()),
-                       Eout_0, Eout_2,
-                       Eout_0 + Eout_2, float(tau.values()),
-                       dE],
-                      "data")
+    ts.dump_stats(t,
+                  [grad_mu_max, dt_prev, dt.get(),
+                   float(h.values()),
+                   Eout_0, Eout_2,
+                   Eout_0 + Eout_2, float(tau.values()),
+                   dE],
+                  "data")
 
     if tstep % parameters["checkpoint_intv"] == 0 or t >= T:
         save_checkpoint(tstep, t, geo_map.ref_mesh,

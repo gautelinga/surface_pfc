@@ -4,6 +4,7 @@ import random
 import sympy as sp
 import numpy as np
 from ufl import max_value, min_value
+from itertools import product
 
 
 # Tweaked from Oasis
@@ -31,6 +32,24 @@ class NdFunction(df.Function):
     def __call__(self):
         for i, _u in enumerate(self.u):
             self.fa[i].assign(self.sub(i), _u)
+
+
+class AssignedTensorFunction(df.Function):
+    def __init__(self, u, name="Assigned Tensor Function"):
+        self.u = u
+        S = u[0].function_space()
+        mesh = S.mesh()
+        constrained_domain = S.dofmap().constrained_domain
+        Sdxd = df.FunctionSpace(mesh,
+                                df.TensorElement(S.ufl_element()),
+                                constrained_domain=constrained_domain)
+        df.Function.__init__(self, Sdxd, name=name)
+        self.fa = [df.FunctionAssigner(Sdxd.sub(ij), S)
+                   for ij, _u in enumerate(u)]
+
+    def __call__(self):
+        for ij, _u in enumerate(self.u):
+            self.fa[ij].assign(self.sub(ij), _u)
 
 
 class QuarticPotential:
@@ -80,3 +99,38 @@ def anneal_func(t, tau_0, tau_ramp, t_ramp):
     tau_avg = (tau_0 + tau_ramp)/2
     k = np.pi/t_ramp
     return dtau*np.cos(k*t) + tau_avg
+
+
+def determinant(A):
+    # Faster than Sympy's default
+    dims = np.shape(A)
+    assert(dims[0] == dims[1])
+    if dims[0] == 0:
+        return None
+    elif dims[0] == 1:
+        return A[0][0]
+    elif dims[0] == 2:
+        return A[0][0]*A[1][1]-A[0][1]*A[1][0]
+    else:
+        A_ = sp.Matrix(A)
+        return A_.det()
+
+
+def inverse(A, det=None):
+    # Faster than Sympy's default
+    dims = np.shape(A)
+    assert(dims[0] == dims[1])
+    if dims[0] == 0:
+        return None
+    elif dims[0] == 1:
+        return 1.0/A[0][0]
+    elif dims[0] == 2 and det is not None:
+        return [[A[1][1]/det, -A[0][1]/det],
+                [-A[1][0]/det, A[0][0]/det]]
+    else:
+        A_ = sp.Matrix(A)
+        IA_ = sp.Inverse(A_)
+        IA = [[None for _ in range(dims[0])] for _ in range(dims[0])]
+        for i, j in product(range(dims[0]), range(dims[0])):
+            IA[i][j] = IA_[i, j]
+        return IA

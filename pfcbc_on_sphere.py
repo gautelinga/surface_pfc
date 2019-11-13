@@ -38,8 +38,8 @@ tau = parameters["tau"]
 h = parameters["h"]
 M = parameters["M"]
 
-# geo_map = EllipsoidMap(0.75*R, 0.75*R, 1.25*R)
-geo_map = CylinderMap(R, L)
+geo_map = EllipsoidMap(0.75*R, 0.75*R, 1.25*R)
+# geo_map = CylinderMap(R, L)
 geo_map.initialize(res)
 
 W = geo_map.mixed_space((geo_map.ref_el,

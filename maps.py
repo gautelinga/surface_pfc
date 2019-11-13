@@ -3,179 +3,180 @@ import numpy as np
 import dolfin as df
 from bcs import EllipsoidPBC, CylinderPBC, TorusPBC
 from common.mesh_refinement import densified_ellipsoid_mesh
-from common.utilities import NdFunction
+from common.utilities import NdFunction, AssignedTensorFunction, \
+    determinant, inverse
 from common.io import load_mesh
 from common.cmd import info_red, info_cyan, info_blue
+from itertools import product
 import os
 import ufl
 import mshr
+import cloudpickle as pickle
 
 
 class GeoMap:
     def __init__(self, xyz, ts, ts_min, ts_max, verbose=False):
-        self.t = ts[0]
-        self.s = ts[1]
+        self.AXIS_REF = [tsi.name for tsi in ts]
+        self.dim_ref = len(self.AXIS_REF)
+        self.AXIS = ["x", "y", "z"]
+        self.r_ref = dict()
+        for d, ts_d in zip(self.AXIS_REF, ts):
+            self.r_ref[d] = ts_d
         self.map = dict()
-        self.map["x"] = xyz[0]
-        self.map["y"] = xyz[1]
-        self.map["z"] = xyz[2]
-        self.t_min = ts_min[0]
-        self.t_max = ts_max[0]
-        self.s_min = ts_min[1]
-        self.s_max = ts_max[1]
+        for d, xyz_d in zip(self.AXIS, xyz):
+            self.map[d] = xyz_d
+        self.r_ref_min = dict()
+        self.r_ref_max = dict()
+        for d, ts_min_d, ts_max_d in zip(self.AXIS_REF, ts_min, ts_max):
+            self.r_ref_min[d] = ts_min_d
+            self.r_ref_max[d] = ts_max_d
         self.verbose = verbose
-        self.compute_geometry()
+        self.evalf = dict()
 
     def compute_geometry(self):
         # Simple derivatives
         self.info_verbose("Computing derivatives")
-        self.map["xs"] = sp.diff(self.map["x"], self.s)
-        self.map["xt"] = sp.diff(self.map["x"], self.t)
-        self.map["ys"] = sp.diff(self.map["y"], self.s)
-        self.map["yt"] = sp.diff(self.map["y"], self.t)
-        self.map["zs"] = sp.diff(self.map["z"], self.s)
-        self.map["zt"] = sp.diff(self.map["z"], self.t)
+        for xi, j in product(self.AXIS, self.AXIS_REF):
+            self.map[xi + "_," + j] = sp.diff(self.map[xi], self.r_ref[j])
 
         # Double derivatives
         self.info_verbose("Computing double derivatives")
-        self.map["xss"] = sp.diff(self.map["xs"], self.s)
-        self.map["xst"] = sp.diff(self.map["xs"], self.t)
-        self.map["xtt"] = sp.diff(self.map["xt"], self.t)
-        self.map["yss"] = sp.diff(self.map["ys"], self.s)
-        self.map["yst"] = sp.diff(self.map["ys"], self.t)
-        self.map["ytt"] = sp.diff(self.map["yt"], self.t)
-        self.map["zss"] = sp.diff(self.map["zs"], self.s)
-        self.map["zst"] = sp.diff(self.map["zs"], self.t)
-        self.map["ztt"] = sp.diff(self.map["zt"], self.t)
-
-        for key in self.map.keys():
-            self.map[key] = (self.map[key])
+        for xi, j, k in product(self.AXIS, self.AXIS_REF, self.AXIS_REF):
+            self.map[xi + "_," + j + k] = sp.diff(
+                self.map[xi + "_," + j], self.r_ref[k])
 
         # The metric tensor
-        self.map["g_ss"] = (self.map["xs"]**2
-                            + self.map["ys"]**2
-                            + self.map["zs"]**2)
-        self.map["g_st"] = (self.map["xs"]*self.map["xt"]
-                            + self.map["ys"]*self.map["yt"]
-                            + self.map["zs"]*self.map["zt"])
-        self.map["g_tt"] = (self.map["xt"]**2
-                            + self.map["yt"]**2
-                            + self.map["zt"]**2)
-        self.map["g_ss"] = (self.map["g_ss"])
-        self.map["g_st"] = (self.map["g_st"])
-        self.map["g_tt"] = (self.map["g_tt"])
+        self.info_verbose("Computing metric tensor")
+        for j, k in product(self.AXIS_REF, self.AXIS_REF):
+            # g_ab is symmetric
+            g_jk_id = "g_" + j + k
+            g_kj_id = "g_" + k + j
+            if g_kj_id in self.map:
+                self.map[g_jk_id] = self.map[g_kj_id]
+            else:
+                self.map[g_jk_id] = sum(
+                    [self.map[xi + "_," + j] * self.map[xi + "_," + k]
+                     for xi in self.AXIS])
 
-        self.map["g_det"] = (self.map["g_ss"]*self.map["g_tt"]
-                             - self.map["g_st"]**2)
-        self.map["g_det"] = (self.map["g_det"])
+        self.info_verbose("Computing determinant symbolically")
+        _g_ab = [[self.map["g_" + j + k]
+                  for k in self.AXIS_REF]
+                 for j in self.AXIS_REF]
+        self.map["g_det"] = determinant(_g_ab)
+
         self.map["g"] = abs(self.map["g_det"])
         self.map["sqrt_g"] = sp.sqrt(abs(self.map["g"]))
 
-        self.map["gss"] = (self.map["g_tt"]/self.map["g_det"])
-        self.map["gst"] = (-self.map["g_st"]/self.map["g_det"])
-        self.map["gtt"] = (self.map["g_ss"]/self.map["g_det"])
+        self.info_verbose("Computing inverse metric tensor")
+        _gab = inverse(_g_ab, det=self.map["g_det"])
 
-        self.map["g_ss_s"] = (sp.diff(self.map["g_ss"], self.s))
-        self.map["g_ss_t"] = (sp.diff(self.map["g_ss"], self.t))
-        self.map["g_st_s"] = (sp.diff(self.map["g_st"], self.s))
-        self.map["g_st_t"] = (sp.diff(self.map["g_st"], self.t))
-        self.map["g_tt_s"] = (sp.diff(self.map["g_tt"], self.s))
-        self.map["g_tt_t"] = (sp.diff(self.map["g_tt"], self.t))
-        self.info_verbose("Metric computed")
+        self.info_verbose("Getting the elements of inverse metric tensor")
+        for (dj, j), (dk, k) in product(enumerate(self.AXIS_REF),
+                                        enumerate(self.AXIS_REF)):
+            # g^ab is symmetric
+            gjk_id = "g^" + j + k
+            gkj_id = "g^" + k + j
+            if gjk_id in self.map:
+                self.map[gjk_id] = self.map[gkj_id]
+            else:
+                self.map[gjk_id] = _gab[dj][dk]
 
-        # The normal
-        cross_x = (
-            self.map["yt"]*self.map["zs"] - self.map["ys"]*self.map["zt"])
-        cross_y = (
-            self.map["zt"]*self.map["xs"] - self.map["zs"]*self.map["xt"])
-        cross_z = (
-            self.map["xt"]*self.map["ys"] - self.map["xs"]*self.map["yt"])
-        cross_mag = (
-            sp.sqrt(cross_x**2 + cross_y**2 + cross_z**2))
-        self.map["nx"] = (cross_x/cross_mag)
-        self.map["ny"] = (cross_y/cross_mag)
-        self.map["nz"] = (cross_z/cross_mag)
+        self.info_verbose("Computing derivatives of metric tensor")
+        for j, k, l in product(self.AXIS_REF, self.AXIS_REF, self.AXIS_REF):
+            # g_jk,l is symmetric wrt. j <-> k
+            g_jkl_id = "g_" + j + k + "," + l
+            g_kjl_id = "g_" + k + j + "," + l
+            if g_jkl_id in self.map:
+                self.map[g_jkl_id] = self.map[g_kjl_id]
+            else:
+                self.map[g_jkl_id] = sp.diff(
+                    self.map["g_" + j + k], self.r_ref[l])
 
-        # Curvature tensor
-        self.map["K_ss"] = (self.map["nx"]*self.map["xss"]
-                            + self.map["ny"]*self.map["yss"]
-                            + self.map["nz"]*self.map["zss"])
-        self.map["K_st"] = (self.map["nx"]*self.map["xst"]
-                            + self.map["ny"]*self.map["yst"]
-                            + self.map["nz"]*self.map["zst"])
-        self.map["K_ts"] = self.map["K_st"]
-        self.map["K_tt"] = (self.map["nx"]*self.map["xtt"]
-                            + self.map["ny"]*self.map["ytt"]
-                            + self.map["nz"]*self.map["ztt"])
+        # Curvature related quantities are
+        # not available for higher dimensions
+        if self.dim_ref <= 2:
+            # The normal
+            self.info_verbose("Computing normal")
 
-        self.info_verbose('K_ij computed, computing K^i_j ... ')
-        self.map["Ks_s"] = (self.map["gss"]*self.map["K_ss"]
-                            + self.map["gst"]*self.map["K_ts"])
-        self.map["Ks_t"] = (self.map["gss"]*self.map["K_st"]
-                            + self.map["gst"]*self.map["K_tt"])
-        self.map["Kt_s"] = (self.map["gst"]*self.map["K_ss"]
-                            + self.map["gtt"]*self.map["K_ts"])
-        self.map["Kt_t"] = (self.map["gst"]*self.map["K_st"]
-                            + self.map["gtt"]*self.map["K_tt"])
+            _v = [None, None]
+            for dj, j in enumerate(self.AXIS_REF):
+                _v[dj] = sp.Matrix([self.map[xi + "_," + j]
+                                    for xi in self.AXIS])
+            cross = _v[0].cross(_v[1])
+            cross_mag = cross.norm()
+            for di, xi in enumerate(self.AXIS):
+                self.map["n_" + xi] = cross[di]/cross_mag
 
-        self.info_verbose('K^i_j computed, computing K^ij ... ')
+            # Curvature tensor
+            self.info_verbose("Computing curvature tensor")
+            self.info_verbose("Computing K_ij")
+            for j, k in product(self.AXIS_REF, self.AXIS_REF):
+                # K_ab is symmetric
+                K_jk_id = "K_" + j + k
+                K_kj_id = "K_" + k + j
+                if K_kj_id in self.map:
+                    self.map[K_jk_id] = self.map[K_kj_id]
+                else:
+                    self.map[K_jk_id] = sum(
+                        [self.map["n_" + xi]*self.map[xi + "_," + j + k]
+                         for xi in self.AXIS])
 
-        # Skipping "simplify" because it is exceedingly slow:
-        self.map["Kss"] = (self.map["gss"]*self.map["Ks_s"]
-                           + self.map["gst"]*self.map["Ks_t"])
-        self.map["Kst"] = (self.map["gst"]*self.map["Ks_s"]
-                           + self.map["gtt"]*self.map["Ks_t"])
-        self.map["Kts"] = (self.map["gss"]*self.map["Kt_s"]
-                           + self.map["gst"]*self.map["Kt_t"])
-        self.map["Ktt"] = (self.map["gst"]*self.map["Kt_s"]
-                           + self.map["gtt"]*self.map["Kt_t"])
-        self.info_verbose('K^ij computed.')
-        # Curvature tensor K^i_j as a matrix
-        self.map["Kmat"] = sp.Matrix([[self.map["Kt_t"], self.map["Kt_s"]],
-                                      [self.map["Kt_s"], self.map["Ks_s"]]])
-        self.info_verbose("Curvature tensor computed")
+            self.info_verbose("Computing K^i_j")
+            for j, k in product(self.AXIS_REF, self.AXIS_REF):
+                self.map["K^" + j + "_" + k] = sum(
+                    [self.map["g^" + j + l]*self.map["K_" + l + k]
+                     for l in self.AXIS_REF])
 
-        # Mean and Gaussian curvature (no simplify, too heavy)
-        self.info_verbose("Computing scalar curvatures...")
-        self.map["H"] = ((self.map["Ks_s"] + self.map["Kt_t"])/2)
-        self.map["K"] = (self.map["Ks_s"]*self.map["Kt_t"]
-                         - self.map["Ks_t"]*self.map["Kt_s"])
+            self.info_verbose("Computing K^ij")
+            for j, k in product(self.AXIS_REF, self.AXIS_REF):
+                Kjk_id = "K^" + j + k
+                Kkj_id = "K^" + k + j
+                if Kkj_id in self.map:
+                    self.map[Kjk_id] = self.map[Kkj_id]
+                else:
+                    self.map[Kjk_id] = sum(
+                        [self.map["g^" + l + k]*self.map["K^" + j + "_" + l]
+                         for l in self.AXIS_REF])
 
-        self.info_verbose("Computing Christoffel symbols...")
+            self.info_verbose("Curvature tensor computed")
+
+            # Mean and Gaussian curvature (no simplify, too heavy)
+            self.info_verbose("Computing scalar curvatures")
+            self.map["H"] = sum([self.map["K^" + j + "_" + j]
+                                for j in self.AXIS_REF])/2
+            self.map["K"] = determinant([[self.map["K^" + j + "_" + k]
+                                        for k in self.AXIS_REF]
+                                        for j in self.AXIS_REF])
+
         # Christoffel symbols
-        self.map["Gs_ss"] = ((
-            self.map["gss"]*self.map["g_ss_s"]
-            + self.map["gst"]*(
-                2*self.map["g_st_s"]-self.map["g_ss_t"]))/2)
-        self.map["Gs_st"] = ((
-            self.map["gss"]*self.map["g_ss_t"]
-            + self.map["gst"]*self.map["g_tt_s"])/2)
-        self.map["Gs_tt"] = ((
-            self.map["gss"]*(
-                2*self.map["g_st_t"] - self.map["g_tt_s"])
-            + self.map["gst"]*self.map["g_tt_t"])/2)
-        self.map["Gt_ss"] = ((
-            self.map["gtt"]*(
-                2*self.map["g_st_s"] - self.map["g_ss_t"])
-            + self.map["gst"]*self.map["g_ss_s"])/2)
-        self.map["Gt_st"] = ((
-            self.map["gtt"]*self.map["g_tt_s"]
-            + self.map["gst"]*self.map["g_ss_t"])/2)
-        self.map["Gt_tt"] = ((
-            self.map["gtt"]*self.map["g_tt_t"]
-            + self.map["gst"]*(
-                2*self.map["g_st_t"]-self.map["g_tt_s"]))/2)
+        self.info_verbose("Computing Christoffel symbols")
+        for j, k, l in product(self.AXIS_REF, self.AXIS_REF, self.AXIS_REF):
+            # Ga_bc is symmetric wrt. b <-> c
+            Gj_kl_id = "G^" + j + "_" + k + l
+            Gj_lk_id = "G^" + j + "_" + l + k
+            if Gj_kl_id in self.map:
+                self.map[Gj_lk_id] = self.map[Gj_kl_id]
+            else:
+                self.map[Gj_lk_id] = sum(
+                    [self.map["g^" + j + m]*(
+                        self.map["g_" + m + k + "," + l]
+                        + self.map["g_" + m + l + "," + k]
+                        - self.map["g_" + k + l + "," + m])
+                     for m in self.AXIS_REF])
 
-        self.evalf = dict()
-
-    def eval(self, key):  # , t_vals, s_vals):
+    def eval(self, key):
         if key not in self.evalf:
             self.info_verbose("Lambdifying: {}".format(key))
-            self.evalf[key] = sp.lambdify([self.t, self.s],
-                                          self.map[key], "numpy")
-        v = self.evalf[key](self.t_vals, self.s_vals)
+            self.evalf[key] = sp.lambdify(
+                [self.r_ref[j] for j in self.AXIS_REF],
+                self.map[key], "numpy")
+
+        # v = self.evalf[key](self.t_vals, self.s_vals)
+        v = self.evalf[key](*[self.r_ref_vals[j] for j in self.AXIS_REF])
         if isinstance(v, int) or isinstance(v, float):
-            return v*np.ones_like(self.t_vals)
+            # length = len(self.t_vals)
+            length = len(self.r_ref_vals[self.AXIS_REF[0]])
+            return v*np.ones(length)
         else:
             return v
 
@@ -191,6 +192,18 @@ class GeoMap:
         return f
 
     def initialize(self, res, restart_folder=None):
+        if restart_folder is not None:
+            evalf_filename = os.path.join(restart_folder, "evalf.pkl")
+            if os.path.exists(evalf_filename):
+                self.info_verbose("Loading stored evalf from checkpoint")
+                with open(evalf_filename, "rb") as f:
+                    self.evalf = pickle.load(f)
+            map_filename = os.path.join(restart_folder, "map.pkl")
+            if os.path.exists(map_filename):
+                self.info_verbose("Loading stored map from checkpoint")
+                with open(map_filename, "rb") as f:
+                    self.map = pickle.load(f)
+        self.compute_geometry()
         if restart_folder is None:
             self.compute_mesh(res)
             self.compute_pbc()
@@ -217,90 +230,121 @@ class GeoMap:
         f.vector()[:] = f_vec
         return f
 
+    def _det_pointwise_vec(self, A_vec):
+        dims = np.shape(A_vec)
+        f_vec = np.zeros(dims[2])
+        for i in range(dims[2]):
+            f_vec[i] = np.linalg.det(A_vec[:, :, i])
+        return f_vec
+
+    def _det_pointwise(self, A, key):
+        self.info_verbose("Computing determinant pointwise: {}".format(key))
+        dims = np.shape(A)
+        assert(dims[0] == dims[1])
+        A_vec = [[None for _ in range(dims[0])] for _ in range(dims[0])]
+        for di in range(dims[0]):
+            for dj in range(dims[0]):
+                A_vec[di][dj] = A[di][dj].vector().get_local()
+        f = self.make_function(key)
+        f.vector()[:] = self._det_pointwise_vec(np.array(A_vec))
+        return f
+
     def initialize_metric(self):  # , S_ref, t_vals, s_vals):
-        self.g_tt = self.get_function("g_tt")
-        self.g_st = self.get_function("g_st")
-        self.g_ss = self.get_function("g_ss")
-        self.gtt = self.get_function("gtt")
-        self.gst = self.get_function("gst")
-        self.gss = self.get_function("gss")
+        self._g = dict()
+        for j, k in product(self.AXIS_REF, self.AXIS_REF):
+            # g_ab is symmetric
+            if "_" + k + j in self._g:
+                self._g["_" + j + k] = self._g["_" + k + j]
+            else:
+                self._g["_" + j + k] = self.get_function("g_" + j + k)
+            # gab is symmetric
+            if "^" + k + j in self._g:
+                self._g["^" + j + k] = self._g["^" + k + j]
+            else:
+                self._g["^" + j + k] = self.get_function("g^" + j + k)
+
         self.sqrt_g = self.get_function("sqrt_g")
 
-        self.K_tt = self.get_function("K_tt")
-        # self.K_ts = self.get_function("K_ts")
-        self.K_st = self.get_function("K_st")
-        self.K_ss = self.get_function("K_ss")
+        _g_ab = [[self._g["_" + j + k]
+                  for k in self.AXIS_REF]
+                 for j in self.AXIS_REF]
+        _gab = [[self._g["^" + j + k]
+                 for k in self.AXIS_REF]
+                for j in self.AXIS_REF]
 
-        self.Ks_s = self._dot_pointwise([self.gss, self.gst],
-                                        [self.K_ss, self.K_st],
-                                        "Ks_s")
-        self.Ks_t = self._dot_pointwise([self.gss, self.gst],
-                                        [self.K_st, self.K_tt],
-                                        "Ks_t")
-        self.Kt_s = self._dot_pointwise([self.gst, self.gtt],
-                                        [self.K_ss, self.K_st],
-                                        "Kt_s")
-        self.Kt_t = self._dot_pointwise([self.gst, self.gtt],
-                                        [self.K_st, self.K_tt],
-                                        "Kt_t")
-
-        self.Kss = self._dot_pointwise([self.gss, self.gst],
-                                       [self.Ks_s, self.Ks_t],
-                                       "Kss")
-        self.Kst = self._dot_pointwise([self.gst, self.gtt],
-                                       [self.Ks_s, self.Ks_t],
-                                       "Kst")
-        self.Kts = self._dot_pointwise([self.gss, self.gst],
-                                       [self.Kt_s, self.Kt_t],
-                                       "Kts")
-        self.Ktt = self._dot_pointwise([self.gst, self.gtt],
-                                       [self.Kt_s, self.Kt_t],
-                                       "Ktt")
-
-        self.K = self.make_function("K")
-        self.K.vector()[:] = (self.Ks_s.vector().get_local()
-                              * self.Kt_t.vector().get_local()
-                              - self.Ks_t.vector().get_local()
-                              * self.Kt_s.vector().get_local())
-
-        self.H = self.make_function("H")
-        self.H.vector()[:] = (self.Ks_s.vector().get_local()
-                              + self.Kt_t.vector().get_local())/2
-
-        # self.Kt_t = self.get_function("Kt_t")
-        # self.Kt_s = self.get_function("Kt_s")
-        # self.Ks_t = self.get_function("Ks_t")
-        # self.Ks_s = self.get_function("Ks_s")
-        
-        # self.Ktt = self.get_function("Ktt")
-        # self.Kts = self.get_function("Kts")
-        # self.Kst = self.get_function("Kst")
-        # self.Kss = self.get_function("Kss")
-
-        # self.K = self.get_function("K")
-        # self.H = self.get_function("H")
-
-        self.Gs_ss = self.get_function("Gs_ss")
-        self.Gs_st = self.get_function("Gs_st")
-        self.Gs_tt = self.get_function("Gs_tt")
-        self.Gt_ss = self.get_function("Gt_ss")
-        self.Gt_st = self.get_function("Gt_st")
-        self.Gt_tt = self.get_function("Gt_tt")
-
-        _gab = [[self.gtt, self.gst], [self.gst, self.gss]]
-        _Kab = [[self.Ktt, self.Kst], [self.Kst, self.Kss]]
-        _K_ab = [[self.K_tt, self.K_st], [self.K_st, self.K_ss]]
-        _Ka_b = [[self.Kt_t, self.Kt_s], [self.Ks_t, self.Ks_s]]
-        _Ga_bc = [[[self.Gt_tt, self.Gt_st], [self.Gt_st, self.Gt_ss]],
-                  [[self.Gs_tt, self.Gs_st], [self.Gs_st, self.Gs_ss]]]
+        self.g_ab = ufl.as_tensor(_g_ab)  # Metric g_ij
         self.gab = ufl.as_tensor(_gab)  # Inverse metric, g^ij
-        self.Kab = ufl.as_tensor(_Kab)  # K^{ij}
-        self.K_ab = ufl.as_tensor(_K_ab)  # K_{ij}
-        self.Ka_b = ufl.as_tensor(_Ka_b)  # K^i_j
-        self.Ga_bc = ufl.as_tensor(_Ga_bc)  # Christoffel symbols
 
-        # We assume the format
-        # ufl.as_tensor([[[ttt, tts], [tst, tss]], [[stt, sts], [sst, sss]]])
+        # Curvature quantities are not supported in higher dimensions
+        if self.dim_ref <= 2:
+            self._K = dict()
+            for j, k in product(self.AXIS_REF, self.AXIS_REF):
+                # K_ab is symmetric
+                if "_" + k + j in self._K:
+                    self._K["_" + j + k] = self._K["_" + k + j]
+                else:
+                    self._K["_" + j + k] = self.get_function("K_" + j + k)
+
+            # Raising indices pointwise (faster than symbolically)
+            for j, k in product(self.AXIS_REF, self.AXIS_REF):
+                self._K["^" + j + "_" + k] = self._dot_pointwise(
+                    [self._g["^" + j + m] for m in self.AXIS_REF],
+                    [self._K["_" + m + k] for m in self.AXIS_REF],
+                    "K^" + j + "_" + k)
+
+            for j, k in product(self.AXIS_REF, self.AXIS_REF):
+                # Kab is symmetric
+                if "^" + k + j in self._K:
+                    self._K["^" + j + k] = self._K["^" + k + j]
+                else:
+                    self._K["^" + j + k] = self._dot_pointwise(
+                        [self._g["^" + k + m] for m in self.AXIS_REF],
+                        [self._K["^" + j + "_" + m] for m in self.AXIS_REF],
+                        "K^" + j + k)
+
+            _K_ab = [[self._K["_" + j + k]
+                      for k in self.AXIS_REF]
+                     for j in self.AXIS_REF]
+            _Ka_b = [[self._K["^" + j + "_" + k]
+                      for k in self.AXIS_REF]
+                     for j in self.AXIS_REF]
+            _Kab = [[self._K["^" + j + k]
+                     for k in self.AXIS_REF]
+                    for j in self.AXIS_REF]
+
+            self.K = self._det_pointwise(_Ka_b, "K")
+
+            self.H = self.make_function("H")
+            self.H.vector()[:] = sum(
+                [self._K["^" + m + "_" + m].vector().get_local()
+                 for m in self.AXIS_REF])/2
+
+            self.Kab = ufl.as_tensor(_Kab)  # K^{ij}
+            self.K_ab = ufl.as_tensor(_K_ab)  # K_{ij}
+            self.Ka_b = ufl.as_tensor(_Ka_b)  # K^i_j
+
+        self._G = dict()
+        # for j, k, l in product(self.AXIS_REF, self.AXIS_REF, self.AXIS_REF):
+        #     self._G["^" + j + "_" + k + l] = self.make_function("G" + j + "_" + k + l)
+        #     self._G["^" + j + "_" + k + l].vector()[:] = sum(
+        #         [self._g["^" + j + m].vector().get_local()*(
+        #             self._g["_" + m + k + "_" + l].vector().get_local()
+        #             + self._g["_" + m + l + "_" + k].vector().get_local()
+        #             - self._g["_" + k + l + "_" + m].vector().get_local())
+        #          for m in self.AXIS_REF])
+        for j, k, l in product(self.AXIS_REF, self.AXIS_REF, self.AXIS_REF):
+            # Ga_bc is symmetric wrt. b <-> c
+            if "^" + j + "_" + l + k in self._G:
+                self._G["^" + j + "_" + k + l] = self._G["^" + j + "_" + l + k]
+            else:
+                self._G["^" + j + "_" + k + l] = \
+                  self.get_function("G^" + j + "_" + k + l)
+
+        _Ga_bc = [[[self._G["^" + j + "_" + k + l]
+                    for l in self.AXIS_REF]
+                   for k in self.AXIS_REF]
+                  for j in self.AXIS_REF]
+        self.Ga_bc = ufl.as_tensor(_Ga_bc)  # Christoffel symbols
 
     def CovD10(self, V):
         """ Takes covariant derivative of a (1,0) tensor V -- a vector. """
@@ -366,56 +410,95 @@ class GeoMap:
 
     def coords(self):
         # NOTE: Doesn't work for geometries that are periodic in 3d
-        x = self.get_function("x")
-        y = self.get_function("y")
-        z = self.get_function("z")
-        xyz = NdFunction([x, y, z], name="xyz")
+        # x = self.get_function("x")
+        # y = self.get_function("y")
+        # z = self.get_function("z")
+        # xyz = NdFunction([x, y, z], name="xyz")
+        xyz = NdFunction([self.get_function(xi) for xi in self.AXIS],
+                         name="xyz")
         xyz()
         return xyz
 
     def dcoords(self):
-        xt = self.get_function("xt")
-        yt = self.get_function("yt")
-        zt = self.get_function("zt")
-        xs = self.get_function("xs")
-        ys = self.get_function("ys")
-        zs = self.get_function("zs")
-        xyzt = NdFunction([xt, yt, zt], name="xyzt")
-        xyzs = NdFunction([xs, ys, zs], name="xyzs")
-        xyzt()
-        xyzs()
-        return xyzt, xyzs
+        # xt = self.get_function("xt")
+        # yt = self.get_function("yt")
+        # zt = self.get_function("zt")
+        # xs = self.get_function("xs")
+        # ys = self.get_function("ys")
+        # zs = self.get_function("zs")
+        # xyzt = NdFunction([xt, yt, zt], name="xyzt")
+        # xyzs = NdFunction([xs, ys, zs], name="xyzs")
+        # xyzt()
+        # xyzs()
+        dxyz = [None]*len(self.AXIS_REF)
+        for dj, j in enumerate(self.AXIS_REF):
+            dxyz[dj] = NdFunction([self.get_function(xi + "_," + j)
+                                   for xi in self.AXIS],
+                                  name="xyz_,{}".format(dj))
+            dxyz[dj]()
+        return dxyz
 
     def metric_tensor(self):
-        g = NdFunction([self.g_tt, self.g_st, self.g_ss], name="g_ab")
-        g()
-        return g
+        # g_ab = NdFunction([self.g_tt, self.g_st, self.g_ss],
+        #                   name="g_ab")
+        # g_ab = NdFunction([self._g["_tt"], self._g["_st"], self._g["_ss"]],
+        #                  name="g_ab")
+        g_ab = AssignedTensorFunction([self._g["_" + j + k]
+                                       for j, k in product(
+                                           self.AXIS_REF, self.AXIS_REF)],
+                                      name="g_ab")
+        g_ab()
+        return g_ab
 
     def metric_tensor_inv(self):
-        g_inv = NdFunction([self.gtt, self.gst, self.gss], name="gab")
-        g_inv()
-        return g_inv
+        # gab = NdFunction([self.gtt, self.gst, self.gss],
+        #                  name="gab")
+        # gab = NdFunction([self._g["^tt"], self._g["^st"], self._g["^ss"]],
+        #                  name="gab")
+        gab = AssignedTensorFunction([self._g["^" + j + k]
+                                      for j, k in product(
+                                          self.AXIS_REF, self.AXIS_REF)],
+                                     name="g^ab")
+        gab()
+        return gab
 
     def curvature_tensor(self):
-        K_ab = NdFunction([self.K_tt, self.K_st, self.K_ss],
-                          name="K_ab")
+        # K_ab = NdFunction([self.K_tt, self.K_st, self.K_ss],
+        #                   name="K_ab")
+        # K_ab = NdFunction([self._K["_tt"], self._K["_st"], self._K["_ss"]],
+        #                   name="K_ab")
+        K_ab = AssignedTensorFunction([self._K["_" + j + k]
+                                       for j, k in product(
+                                               self.AXIS_REF, self.AXIS_REF)],
+                                      name="K_ab")
         K_ab()
         return K_ab
 
     def normal(self):
-        nx = self.get_function("nx")
-        ny = self.get_function("ny")
-        nz = self.get_function("nz")
-        n = NdFunction([nx, ny, nz], name="n")
+        # nx = self.get_function("nx")
+        # ny = self.get_function("ny")
+        # nz = self.get_function("nz")
+        # n = NdFunction([nx, ny, nz], name="n")
+        n = NdFunction([self.get_function("n_" + xi) for xi in self.AXIS],
+                       name="n")
         n()
         return n
 
     def compute_mesh(self, res):
-        N = int(np.ceil((self.t_max-self.t_min)/(self.s_max-self.s_min)))
+        N = [0]*len(self.AXIS_REF)
+        for dj, j in enumerate(self.AXIS_REF):
+            N[dj] = int(np.ceil((self.r_ref_max[j]-self.r_ref_min[j])/(
+                             self.r_ref_max[self.AXIS_REF[0]]
+                             - self.r_ref_min[self.AXIS_REF[0]])))
         ref_mesh = df.RectangleMesh.create(
-            [df.Point(self.t_min, self.s_min),
-             df.Point(self.t_max, self.s_max)],
-            [N*res, res], df.cpp.mesh.CellType.Type.triangle)
+            [df.Point(*[self.r_ref_min[j] for j in self.AXIS_REF]),
+             df.Point(*[self.r_ref_max[j] for j in self.AXIS_REF])],
+            [Nd*res for Nd in N], df.cpp.mesh.CellType.Type.triangle)
+        # N = int(np.ceil((self.t_max-self.t_min)/(self.s_max-self.s_min)))
+        # ref_mesh = df.RectangleMesh.create(
+        #     [df.Point(self.t_min, self.s_min),
+        #      df.Point(self.t_max, self.s_max)],
+        #     [N*res, res], df.cpp.mesh.CellType.Type.triangle)
         self.ref_mesh = ref_mesh
 
     def recompute_mesh(self, res):
@@ -440,13 +523,20 @@ class GeoMap:
         self.S_ref = df.FunctionSpace(self.ref_mesh, self.ref_el,
                                       constrained_domain=self.pbc)
 
-        T_vals = df.interpolate(df.Expression("x[0]", degree=1),
-                                self.S_ref)
-        S_vals = df.interpolate(df.Expression("x[1]", degree=1),
-                                self.S_ref)
+        self.r_ref_vals = dict()
+        for dj, j in enumerate(self.AXIS_REF):
+            Rj_ref_vals = df.interpolate(
+                df.Expression("x[{}]".format(dj), degree=1),
+                self.S_ref)
+            self.r_ref_vals[j] = Rj_ref_vals.vector().get_local()
 
-        self.t_vals = T_vals.vector().get_local()
-        self.s_vals = S_vals.vector().get_local()
+        # T_vals = df.interpolate(df.Expression("x[0]", degree=1),
+        #                         self.S_ref)
+        # S_vals = df.interpolate(df.Expression("x[1]", degree=1),
+        #                         self.S_ref)
+
+        # self.t_vals = T_vals.vector().get_local()
+        # self.s_vals = S_vals.vector().get_local()
 
     def local_area(self):
         local_area = df.project(self.sqrt_g*df.CellVolume(self.ref_mesh),
@@ -514,8 +604,10 @@ class EllipsoidMap(GeoMap):
         return isgood
 
     def compute_pbc(self):
-        ts_min = (self.t_min, self.s_min)
-        ts_max = (self.t_max, self.s_max)
+        # ts_min = (self.t_min, self.s_min)
+        # ts_max = (self.t_max, self.s_max)
+        ts_min = [self.r_ref_min[j] for j in self.AXIS_REF]
+        ts_max = [self.r_ref_max[j] for j in self.AXIS_REF]
         self.pbc = EllipsoidPBC(ts_min, ts_max)
 
 
@@ -544,8 +636,10 @@ class CylinderMap(GeoMap):
         GeoMap.__init__(self, xyz, ts, ts_min, ts_max, verbose=verbose)
 
     def compute_pbc(self):
-        ts_min = (self.t_min, self.s_min)
-        ts_max = (self.t_max, self.s_max)
+        # ts_min = (self.t_min, self.s_min)
+        # ts_max = (self.t_max, self.s_max)
+        ts_min = [self.r_ref_min[j] for j in self.AXIS_REF]
+        ts_max = [self.r_ref_max[j] for j in self.AXIS_REF]
         self.pbc = CylinderPBC(ts_min, ts_max,
                                double_periodic=self.double_periodic)
 
@@ -573,9 +667,13 @@ class GaussianBumpMap(GeoMap):
 
     def compute_mesh(self, res):
         self.info_verbose("Using overloaded compute_mesh for GaussianBump")
-        N = int(np.ceil((self.t_max-self.t_min)/(self.s_max-self.s_min)))
-        rect = mshr.Rectangle(df.Point(self.t_min, self.s_min),
-                              df.Point(self.t_max, self.s_max))
+        t_min = self.r_ref_min["t"]
+        t_max = self.r_ref_max["t"]
+        s_min = self.r_ref_min["s"]
+        s_max = self.r_ref_max["s"]
+        # N = int(np.ceil((t_max-t_min)/(s_max-s_min)))
+        rect = mshr.Rectangle(df.Point(t_min, s_min),
+                              df.Point(t_max, s_max))
         ref_mesh = mshr.generate_mesh(rect, res, "cgal")
         self.ref_mesh = ref_mesh
 
@@ -600,8 +698,10 @@ class GaussianBumpMapPBC(GeoMap):
         GeoMap.__init__(self, xyz, ts, ts_min, ts_max, verbose=verbose)
 
     def compute_pbc(self):
-        ts_min = (self.t_min, self.s_min)
-        ts_max = (self.t_max, self.s_max)
+        # ts_min = (self.t_min, self.s_min)
+        # ts_max = (self.t_max, self.s_max)
+        ts_min = [self.r_ref_min[j] for j in self.AXIS_REF]
+        ts_max = [self.r_ref_max[j] for j in self.AXIS_REF]
         self.pbc = CylinderPBC(ts_min, ts_max,
                                double_periodic=self.double_periodic)
 
@@ -629,7 +729,9 @@ class GaussianBumpMapRound(GeoMap):
 
     def compute_mesh(self, res):
         self.info_verbose("Using overloaded compute_mesh for GaussianBump")
-        circ = mshr.Circle(df.Point(0, 0), (self.t_max-self.t_min)/2)
+        t_min = self.r_ref_min["t"]
+        t_max = self.r_ref_max["t"]
+        circ = mshr.Circle(df.Point(0, 0), (t_max-t_min)/2)
         ref_mesh = mshr.generate_mesh(circ, res, "cgal")
         self.ref_mesh = ref_mesh
 
@@ -654,8 +756,12 @@ class SaddleMap(GeoMap):
 
     def compute_mesh(self, res):
         self.info_verbose("Using overloaded compute_mesh for Saddle geometry")
-        rect = mshr.Rectangle(df.Point(self.t_min, self.s_min),
-                              df.Point(self.t_max, self.s_max))
+        t_min = self.r_ref_min["t"]
+        t_max = self.r_ref_max["t"]
+        s_min = self.r_ref_min["s"]
+        s_max = self.r_ref_max["s"]
+        rect = mshr.Rectangle(df.Point(t_min, s_min),
+                              df.Point(t_max, s_max))
         ref_mesh = mshr.generate_mesh(rect, res, "cgal")
         self.ref_mesh = ref_mesh
 
@@ -670,7 +776,7 @@ class BumpyMap(GeoMap):
         z = 0
         n_k = 0
         for a in amplitudes:
-            #k -> 2*(np.random.random()-0.5)*k
+            # k -> 2*(np.random.random()-0.5)*k
             k1 = wavenumbers[n_k]
             k2 = wavenumbers[n_k+1]
             k3 = wavenumbers[n_k+2]
@@ -736,13 +842,16 @@ class RoughMap(GeoMap):
         GeoMap.__init__(self, xyz, ts, ts_min, ts_max, verbose=verbose)
 
     def compute_pbc(self):
-        ts_min = (self.t_min, self.s_min)
-        ts_max = (self.t_max, self.s_max)
+        # ts_min = (self.t_min, self.s_min)
+        # ts_max = (self.t_max, self.s_max)
+        ts_min = [self.r_ref_min[j] for j in self.AXIS_REF]
+        ts_max = [self.r_ref_max[j] for j in self.AXIS_REF]
         self.pbc = CylinderPBC(ts_min, ts_max,
                                double_periodic=self.double_periodic)
 
     def is_periodic_in_3d(self):
         return self.double_periodic
+
 
 class SaddleMapRound(GeoMap):
     def __init__(self, R, a, b):
@@ -765,7 +874,9 @@ class SaddleMapRound(GeoMap):
     def compute_mesh(self, res):
         import mshr
         print("Using overloaded compute_mesh for Saddle geometry")
-        circ = mshr.Circle(df.Point(0,0), (self.t_max-self.t_min)/2)
+        t_min = self.r_ref_min["t"]
+        t_max = self.r_ref_max["t"]
+        circ = mshr.Circle(df.Point(0, 0), (t_max-t_min)/2)
         ref_mesh = mshr.generate_mesh(circ, res, "cgal")
         self.ref_mesh = ref_mesh
 
@@ -791,16 +902,24 @@ class TorusMap(GeoMap):
         self.r = r
 
     def compute_pbc(self):
-        ts_min = (self.t_min, self.s_min)
-        ts_max = (self.t_max, self.s_max)
+        ts_min = [self.r_ref_min[j] for j in self.AXIS_REF]
+        ts_max = [self.r_ref_max[j] for j in self.AXIS_REF]
+        # ts_min = (self.t_min, self.s_min)
+        # ts_max = (self.t_max, self.s_max)
         self.pbc = TorusPBC(ts_min, ts_max)
 
     def compute_mesh(self, res):
         factor = np.sqrt(self.R/self.r)
         Nt = int(res/factor)
         Ns = int(factor*res)
+
+        t_min = self.r_ref_min["t"]
+        t_max = self.r_ref_max["t"]
+        s_min = self.r_ref_min["s"]
+        s_max = self.r_ref_max["s"]
+
         ref_mesh = df.RectangleMesh.create(
-            [df.Point(self.t_min, self.s_min),
-             df.Point(self.t_max, self.s_max)],
+            [df.Point(t_min, s_min),
+             df.Point(t_max, s_max)],
             [Nt, Ns], df.cpp.mesh.CellType.Type.triangle)
         self.ref_mesh = ref_mesh

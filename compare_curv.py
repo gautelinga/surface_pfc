@@ -15,7 +15,7 @@ class MyProbes():
     def __init__(self, x):
         self.x = x
         self.vals = []
-        
+
     def __call__(self, func):
         rank = func.value_rank()
         if rank == 0:
@@ -45,6 +45,14 @@ def to_vector(A):
     return A_
 
 
+def eig_sorted(A):
+    kappas, vs = np.linalg.eig(A)
+    idx = np.argsort(abs(kappas))[::-1]
+    kappas = kappas[idx]
+    vs = vs[:, idx]
+    return kappas, vs
+
+
 def pick_random_points(p_cell, x_cell, n):
     i = np.random.choice(np.arange(len(p_cell)),
                          n, p=p_cell)
@@ -65,6 +73,8 @@ def main():
     parser.add_argument("-t", "--time", type=float, default=0, help="Time")
     parser.add_argument("--show", action="store_true", help="Show")
     parser.add_argument("--hist", action="store_true", help="Histogram")
+    parser.add_argument("--num_points", type=int, default=10000,
+                        help="Number of points")
     args = parser.parse_args()
 
     tss = []
@@ -99,10 +109,12 @@ def main():
     g_ab = []
     gab = []
     K_ab = []
-    dxyz = []
+    xyz_a = []
 
     var_names = ["t", "s"]
     index_names = ["tt", "st", "ss"]
+    index_numbers = [0, 1, 4]
+    indices = zip(index_names, index_numbers)
     dim_names = ["x", "y", "z"]
 
     for ts in tss:
@@ -112,18 +124,20 @@ def main():
                          for idx in index_names])
         K_ab_loc = dict([(idx, ts.function("K_{}".format(idx)))
                          for idx in index_names])
-        dxyz_loc = [None]*3
-        for d in range(3):
-            dxyz_loc[d] = dict([(i, ts.function("{}{}".format(
-                dim_names[d], i))) for i in var_names])
-            ts.set_val(dxyz_loc[d]["t"], ts.xyzt[:, d])
-            ts.set_val(dxyz_loc[d]["s"], ts.xyzs[:, d])
+        xyz_a_loc = dict([(xi + "" + idx, ts.function("{}{}".format(xi, idx)))
+                          for xi, idx in product(dim_names, var_names)])
 
-        for ij, idx in enumerate(index_names):
+        for idx, ij in indices:
             ts.set_val(g_ab_loc[idx], ts.g_ab[:, ij])
             # Could compute the gab locally instead of loading
             ts.set_val(gab_loc[idx], ts.gab[:, ij])
             ts.set_val(K_ab_loc[idx], ts.K_ab[:, ij])
+
+        # for ij, (idx, xi) in enumerate(product(var_names, dim_names)):
+        #     ts.set_val(xyz_a_loc[xi + "" + idx], ts.xyz_a[:, ij])
+        for (d, xi), (i, idx) in product(enumerate(dim_names),
+                                         enumerate(var_names)):
+            ts.set_val(xyz_a_loc[xi + "" + idx], ts.xyz_a[i][:, d])
 
         g_ab_loc["ts"] = g_ab_loc["st"]
         gab_loc["ts"] = gab_loc["st"]
@@ -132,15 +146,15 @@ def main():
         g_ab.append(g_ab_loc)
         gab.append(gab_loc)
         K_ab.append(K_ab_loc)
-        dxyz.append(dxyz_loc)
+        xyz_a.append(xyz_a_loc)
 
     v_ = []
-    for g_ab_loc, gab_loc, K_ab_loc, dxyz_loc, ts in zip(
-            g_ab, gab, K_ab, dxyz, tss):
+    for g_ab_loc, gab_loc, K_ab_loc, xyz_a_loc, ts in zip(
+            g_ab, gab, K_ab, xyz_a, tss):
         g_ab_ = to_vector(g_ab_loc)
         gab_ = to_vector(gab_loc)
         K_ab_ = to_vector(K_ab_loc)
-        dxyz_ = [to_vector(dxyz_loc_i) for dxyz_loc_i in dxyz_loc]
+        xyz_a_ = to_vector(xyz_a_loc)
 
         Ka_b_ = dict()
         Ka_b_loc = dict()
@@ -163,7 +177,8 @@ def main():
         for idof in range(len(kappa1_)):
             M = np.array([[Ka_b_["tt"][idof], Ka_b_["ts"][idof]],
                           [Ka_b_["st"][idof], Ka_b_["ss"][idof]]])
-            kappas, vs = np.linalg.eig(M)
+            kappas, vs = eig_sorted(M)
+            assert(abs(kappas[0]) >= abs(kappas[1]))
             kappa1_[idof] = kappas[0]
             kappa2_[idof] = kappas[1]
             for ind, i in enumerate(var_names):
@@ -194,11 +209,20 @@ def main():
                     for i in range(3)]
         tau2_vec = [ts.function("tau2_{}".format(dim_names[i]))
                     for i in range(3)]
-        for d in range(3):
-            tau1_vec[d].vector()[:] = sum([dxyz_[d][i] * v1_[i]
-                                           for i in var_names])
-            tau2_vec[d].vector()[:] = sum([dxyz_[d][i] * v2_[i]
-                                           for i in var_names])
+        tau1_norm_ = np.sqrt(
+            sum([g_ab_[i + j]*v1_[i]*v1_[j]
+                 for i, j in product(var_names, var_names)]))
+        tau2_norm_ = np.sqrt(
+            sum([g_ab_[i + j]*v2_[i]*v2_[j]
+                 for i, j in product(var_names, var_names)]))
+        for d, xi in enumerate(dim_names):
+            tau1_vec[d].vector()[:] = sum(
+                [xyz_a_[xi+j] * v1_[j]
+                 for j in var_names])/tau1_norm_
+            tau2_vec[d].vector()[:] = sum(
+                [xyz_a_[xi+j] * v2_[j]
+                 for j in var_names])/tau2_norm_
+
         tau1 = NdFunction(tau1_vec, name="tau1")
         tau2 = NdFunction(tau2_vec, name="tau2")
         tau1()
@@ -262,12 +286,14 @@ def main():
         p_cell[i] = sqrt_g(ic.midpoint())*ic.volume()
 
     p_cell /= p_cell.sum()
-    x_pts = pick_random_points(p_cell, x_cell, 10000)
+    x_pts = pick_random_points(p_cell, x_cell, args.num_points)
 
     if args.show:
+        plt.figure()
         fig = df.plot(costheta)
         plt.scatter(x_pts[:, 0], x_pts[:, 1], s=0.2, color='k')
         plt.colorbar(fig)
+        plt.title("cos(theta)")
 
         plt.show()
 
@@ -283,8 +309,7 @@ def main():
         plt.xlabel("theta")
         plt.ylabel("P(theta)")
         plt.show()
-        
-        
+
 
 if __name__ == "__main__":
     main()

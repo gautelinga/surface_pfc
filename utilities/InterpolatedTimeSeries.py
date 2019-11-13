@@ -155,8 +155,14 @@ class InterpolatedTimeSeries:
         self.g_ab = unpack_fields(self.geometry_folder, "g_ab.xdmf")
         self.gab = unpack_fields(self.geometry_folder, "gab.xdmf")
         self.K_ab = unpack_fields(self.geometry_folder, "K_ab.xdmf")
-        self.xyzt = unpack_fields(self.geometry_folder, "xyzt.xdmf")
-        self.xyzs = unpack_fields(self.geometry_folder, "xyzs.xdmf")
+        self.xyz_a = []
+        for i in range(3):
+            filename_loc = "dxyz{}.xdmf".format(i)
+            if os.path.exists(os.path.join(
+                    self.geometry_folder, filename_loc)):
+                self.xyz_a.append(
+                    unpack_fields(self.geometry_folder,
+                                  filename_loc))
 
         data = dict()
         for params_file in glob.glob(

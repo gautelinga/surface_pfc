@@ -5,6 +5,7 @@ from .cmd import mpi_is_root, mpi_barrier, mpi_comm, \
 import numpy as np
 import json
 import h5py
+import cloudpickle as pickle
 
 
 def dump_xdmf(f, folder=""):
@@ -36,9 +37,9 @@ def dump_coords(geo_map, folder="", name="xyz"):
             xyz[:, :] = xyz_new
 
 
-def dump_dcoords(geo_map, folder="", name="xyz"):
-    dxyz = dict([(i, xyzi) for i, xyzi in zip(["t", "s"], geo_map.dcoords())])
-    for i, xyzi in dxyz.items():
+def dump_dcoords(geo_map, folder="", name="dxyz"):
+    dxyz = geo_map.dcoords()
+    for i, xyzi in enumerate(dxyz):
         filename = os.path.join(folder, "{}{}.xdmf".format(name, i))
         with df.XDMFFile(mpi_comm(), filename) as xdmff:
             xdmff.parameters["rewrite_function_mesh"] = False
@@ -72,6 +73,20 @@ def dump_curvature_tensor(geo_map, folder="", name="K_ab"):
         xdmff.parameters["rewrite_function_mesh"] = False
         xdmff.parameters["flush_output"] = True
         xdmff.write(K_ab)
+
+
+def dump_map(geo_map, folder=""):
+    filename = os.path.join(folder, "map.pkl")
+    if mpi_is_root():
+        with open(filename, "wb") as f:
+            pickle.dump(geo_map.map, f)
+
+
+def dump_evalf(geo_map, folder=""):
+    filename = os.path.join(folder, "evalf.pkl")
+    if mpi_is_root():
+        with open(filename, "wb") as f:
+            pickle.dump(geo_map.evalf, f)
 
 
 def makedirs_safe(folder):
@@ -138,12 +153,15 @@ class Timeseries:
         else:
             self.folder = restart_folder.split("Checkpoint")[0]
         geofolder = os.path.join(self.folder, "Geometry")
+        checkpointfolder = os.path.join(self.folder, "Checkpoint")
         dump_coords(geo_map, folder=geofolder)
         dump_dcoords(geo_map, folder=geofolder)
         dump_xdmf(geo_map.normal(), folder=geofolder)
         dump_metric_tensor(geo_map, folder=geofolder)
         dump_metric_tensor_inv(geo_map, folder=geofolder)
         dump_curvature_tensor(geo_map, folder=geofolder)
+        dump_map(geo_map, folder=checkpointfolder)
+        dump_evalf(geo_map, folder=checkpointfolder)
 
         self.files = dict()
         for field in self.fields:
