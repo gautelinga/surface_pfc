@@ -14,6 +14,7 @@ parameters = dict(
     Lx=6*20*np.sqrt(2),
     Ly=6*20*np.sqrt(2),
     H=10.,
+    num_modes=5,
     res=220,  # Resolution
     dt=1e-1,
     tau=0.2,
@@ -43,11 +44,13 @@ if parameters["restart_folder"]:
 Lx = parameters["Lx"]
 Ly = parameters["Ly"]
 H = parameters["H"]
+num_modes = parameters["num_modes"]
 res = parameters["res"]
 dt = TimeStepSelector(parameters["dt"])
 tau = df.Constant(parameters["tau"])
 h = df.Constant(parameters["h"])
 M = df.Constant(parameters["M"])
+
 
 # Random seed set for reproducibility
 # np.random.seed(0)
@@ -62,7 +65,9 @@ M = df.Constant(parameters["M"])
 #wavenumbers = 2*(np.random.random(n_terms*4)-0.5)*k_max
 #geo_map = BumpyMap(R, R, amplitudes, wavenumbers)
 
-geo_map = RoughMap(Lx, Ly, H, "data/modes.dat", verbose=True)
+geo_map = RoughMap(Lx, Ly, H, "data/modes.dat",
+                   num_modes=num_modes,
+                   verbose=True)
 
 geo_map.initialize(res, restart_folder=parameters["restart_folder"])
 

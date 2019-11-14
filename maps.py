@@ -778,6 +778,7 @@ class BumpyMap(GeoMap):
 class RoughMap(GeoMap):
     def __init__(self, Lx, Ly, amplitude, modes_file,
                  double_periodic=True,
+                 num_modes=4,
                  verbose=False):
         # Lx, Ly, maximum amplitude, maximum wavenumber
         t, s = sp.symbols('t s', real=True)
@@ -792,6 +793,10 @@ class RoughMap(GeoMap):
         # Generate the height function
         z = 0
         modes_data = np.loadtxt(modes_file)
+        if num_modes is not None:
+            ids = np.logical_and(abs(modes_data[:, 0]) <= num_modes,
+                                 abs(modes_data[:, 1]) <= num_modes)
+            modes_data = modes_data[ids, :]
         i_ = modes_data[:, 0].astype(int)
         k_ = modes_data[:, 1].astype(int)
         a_ = modes_data[:, 2]
