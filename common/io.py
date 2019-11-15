@@ -6,6 +6,7 @@ import numpy as np
 import json
 import h5py
 import cloudpickle as pickle
+from .utilities import NdFunction
 
 
 def dump_xdmf(f, folder=""):
@@ -176,6 +177,8 @@ class Timeseries:
                 "parameters_from_tstep_{}.dat".format(self.tstep0))
             dump_parameters(parameters, parametersfile)
 
+        self.S_ref = geo_map.S_ref
+
         self.extra_fields = dict()
         self.extra_field_functions = dict()
 
@@ -185,14 +188,23 @@ class Timeseries:
             qi_.rename(field, "tmp")
             self.files[field].write(qi_, tstep)
 
+        # Dumping extra fields
         if len(self.extra_fields) > 0:
-            S = q_[0].function_space().collapse()
+            # S = q_[0].function_space().collapse()
+            S = self.S_ref
             for field, ufl_expression in self.extra_fields.items():
-                self.extra_field_functions[field] = df.project(ufl_expression,
-                                                               S)
-                self.extra_field_functions[field].rename(field, "tmp")
-                self.files[field].write(self.extra_field_functions[field],
-                                        tstep)
+                if isinstance(ufl_expression, list):
+                    v = [df.project(expr_i, S) for expr_i in ufl_expression]
+                    vf = NdFunction(v, name=field)
+                    vf()
+                    self.extra_field_functions[field] = vf
+                    self.files[field].write(vf, tstep)
+                else:
+                    self.extra_field_functions[field] = df.project(ufl_expression,
+                                                                   S)
+                    self.extra_field_functions[field].rename(field, "tmp")
+                    self.files[field].write(self.extra_field_functions[field],
+                                            tstep)
 
     def _unpack(self):
         num_fields = len(self.fields)
@@ -211,7 +223,7 @@ class Timeseries:
         for field in self.files.keys():
             self.files[field].close()
 
-    def add_scalar_field(self, ufl_expression, field_name):
+    def add_field(self, ufl_expression, field_name):
         filename = os.path.join(self.folder, "Timeseries",
                                 "{}_from_tstep_{}".format(field_name,
                                                           self.tstep0))

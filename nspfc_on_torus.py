@@ -14,14 +14,18 @@ parameters = dict(
     R=30.,  # Radius
     r=10.,
     res=100,  # Resolution
-    dt=1e-1,
-    rho=1.0,
-    mu=1.0,
+    dt=2e-1,
+    rho=.01,
+    eta=.1,
+    tau=0.2,
+    M=1.0,
     restart_folder=None,
-    folder="results_ns_torus",
+    folder="results_nspfc_torus",
     t_0=0.0,
     tstep=0,
     T=2000,
+    dump_intv=5,
+    stats_intv=1,
     checkpoint_intv=50,
     verbose=True,
     init_mode="random",
@@ -39,16 +43,22 @@ r = parameters["r"]
 res = parameters["res"]
 dt = TimeStepSelector(parameters["dt"])
 rho = df.Constant(parameters["rho"])
-mu = df.Constant(parameters["mu"])
+eta = df.Constant(parameters["eta"])
+tau = df.Constant(parameters["tau"])
+M = df.Constant(parameters["M"])
 
 geo_map = TorusMap(R, r)
 geo_map.initialize(res, restart_folder=parameters["restart_folder"])
 
-W = geo_map.mixed_space((geo_map.ref_vel, geo_map.ref_el))
+W = geo_map.mixed_space((geo_map.ref_el, geo_map.ref_el, geo_map.ref_el,
+                         geo_map.ref_vel, geo_map.ref_el))
+field_names = ("psi", "mu", "nu", "u", "p")
+# W = geo_map.mixed_space((geo_map.ref_el, geo_map.ref_el, geo_map.ref_el))
+# field_names = ("psi", "mu", "nu")
 
 # Define trial and test functions
-du = df.TrialFunction(W)
-v, q = df.TestFunctions(W)
+chi, xi, beta, v, q = df.TestFunctions(W)
+# chi, xi, beta = df.TestFunctions(W)
 
 # Define functions
 w = df.TrialFunction(W)
@@ -56,15 +66,19 @@ w_ = df.Function(W, name="u_")  # current solution
 w_1 = df.Function(W, name="u_1")  # solution from previous converged step
 
 # Split mixed functions
-u,  p = df.split(w)
-u_, p_ = df.split(w_)
-u_1, p_1 = df.split(w_1)
+psi, mu, nu, u,  p = df.split(w)
+psi_, mu_, nu_, u_, p_ = df.split(w_)
+psi_1, mu_1, nu_1, u_1, p_1 = df.split(w_1)
+
+# psi, mu, nu = df.split(w)
+# psi_, mu_, nu_ = df.split(w_)
+# psi_1, mu_1, nu_1 = df.split(w_1)
 
 # Create intial conditions
 if parameters["restart_folder"] is None:
     init_mode = parameters["init_mode"]
     if init_mode == "random":
-        w_init = RandomIC(w_, amplitude=10, dims=2, degree=1)
+        w_init = RandomIC(w_, degree=1)
     else:
         exit("Unknown IC")
     w_1.interpolate(w_init)
@@ -72,29 +86,40 @@ if parameters["restart_folder"] is None:
 else:
     load_checkpoint(parameters["restart_folder"], w_, w_1)
 
+w_pot = QuarticPotential()
+
+dw_stab = w_pot.derivative_stab(psi_, psi_1, tau)
+
 f = df.Constant((0., 0.))
 
 # Define some UFL indices:
 i, j, k, l = ufl.Index(), ufl.Index(), ufl.Index(), ufl.Index()
 
+# Brazovskii-Swift (conserved PFC with dc/dt = grad^2 delta F/delta c)
+m_NL = dw_stab * xi
+m_0 = 4 * nu_ * xi - 4 * geo_map.gab[i, j]*nu_.dx(i)*xi.dx(j)
+m = m_NL + m_0
 m_NS = (rho / dt * geo_map.g_ab[i, j] * (u_[i]-u_1[i]) * v[j]
         + rho * geo_map.g_ab[i, j] * u_[k] *
         geo_map.CovD10(u_)[k, i] * v[j]
-        + mu * geo_map.g_ab[i, k] * geo_map.gab[j, l] *
+        + eta * geo_map.g_ab[i, k] * geo_map.gab[j, l] *
         geo_map.CovD10(u_)[i, j] * geo_map.CovD10(v)[k, l]
-        + mu * geo_map.K * geo_map.g_ab[i, j] * u_[i] * v[j]
+        + eta * geo_map.K * geo_map.g_ab[i, j] * u_[i] * v[j]
         - p_ * geo_map.CovD10(v)[i, i]
         - q * geo_map.CovD10(u_)[i, i]
+        + psi_ * mu_.dx(i) * v[i]
         - f[i]*v[i])
-F = geo_map.form(m_NS)
 
-# a = df.lhs(F)
-# L = df.rhs(F)
+F_psi = geo_map.form(1/dt * (psi_ - psi_1) * chi
+                     - psi_ * u_[i] * chi.dx(i)
+                     + M * geo_map.gab[i, j]*mu_.dx(i)*chi.dx(j))
+F_mu = geo_map.form(mu_*xi - m)
+F_nu = geo_map.form(nu_*beta + geo_map.gab[i, j]*psi_.dx(i)*beta.dx(j))
+F_PFC = F_psi + F_mu + F_nu
+F_NS = geo_map.form(m_NS)
+F = F_PFC + F_NS
+
 J = df.derivative(F, w_, du=w)
-
-# SOLVER
-# problem = df.LinearVariationalProblem(a, L, u_)
-# solver = df.LinearVariationalSolver(problem)
 
 problem = df.NonlinearVariationalProblem(F, w_, J=J)
 solver = df.NonlinearVariationalSolver(problem)
@@ -121,7 +146,7 @@ T = parameters["T"]
 
 # Output file
 ts = Timeseries(parameters["folder"], w_,
-                ("u", "p"), geo_map, tstep,
+                field_names, geo_map, tstep,
                 parameters=parameters,
                 restart_folder=parameters["restart_folder"])
 
@@ -130,10 +155,24 @@ divu = geo_map.CovD10(u_)[i, i]
 U = [sum([geo_map.get_function(xi + "_," + vj)*u_[dj]
           for dj, vj in enumerate(geo_map.AXIS_REF)])
      for xi in geo_map.AXIS]
+GradMu = [sum([geo_map.get_function(xi + "_," + vj)*geo_map.gab[i, dj]*mu_.dx(i)
+               for dj, vj in enumerate(geo_map.AXIS_REF)])
+          for xi in geo_map.AXIS]
+
+E_psi = (2*nu_**2 - 2 * geo_map.gab[i, j]*psi_.dx(i)*psi_.dx(j)
+         + w_pot(psi_, tau))
+grad_mu_ufl = df.sqrt(geo_map.gab[i, j]*mu_.dx(i)*mu_.dx(j))
+u_norm_ufl = df.sqrt(geo_map.g_ab[i, j]*u_[i]*u_[j])
+
+ts.add_field(E_psi, "E_psi")
+ts.add_field(GradMu, "GradMu")
+ts.add_field(grad_mu_ufl,
+             "abs_grad_mu")
 
 ts.add_field(E_kin, "E_kin")
 ts.add_field(divu, "divu")
 ts.add_field(U, "U")
+ts.add_field(u_norm_ufl, "u_norm")
 
 # Step in time
 ts.dump(tstep)
@@ -157,13 +196,32 @@ while t < T:
     # Update time with final dt value
     t += dt.get()
 
-    if tstep % 1 == 0:
+    if tstep % parameters["dump_intv"] == 0:
         ts.dump(t)
-        # Assigning timestep size according to grad_mu_max:
-        # dt_prev = dt.get()
-        # dt.set(min(0.05/grad_mu_max, T-t))
-        info_blue("dt = {}".format(dt.get()))
-        # ts.dump_stats(t, "data")
+
+    # Assigning timestep size according to grad_mu_max:
+
+    # grad_mu = ts.get_function("abs_grad_mu")
+    grad_mu = df.project(grad_mu_ufl, geo_map.S_ref)
+    grad_mu_max = mpi_max(grad_mu.vector().get_local())
+    # u_norm = ts.get_function("u_norm")
+    u_norm = df.project(u_norm_ufl, geo_map.S_ref)
+    u_norm_max = mpi_max(u_norm.vector().get_local())
+
+    vel_max = max(u_norm_max, grad_mu_max)
+
+    dt_prev = dt.get()
+    dt.set(min(0.2/vel_max, T-t))
+
+    info_blue("dt = {}".format(dt.get()))
+    if tstep % parameters["stats_intv"] == 0:
+        E_kin_out = df.assemble(geo_map.form(E_kin))
+        E_psi_out = df.assemble(geo_map.form(E_psi))
+        divu_out = df.assemble(geo_map.form(divu))
+
+        ts.dump_stats(t, [E_kin_out, E_psi_out, divu_out, grad_mu_max,
+                          u_norm_max],
+                      "data")
 
     if tstep % parameters["checkpoint_intv"] == 0 or t >= T:
         save_checkpoint(tstep, t, geo_map.ref_mesh,

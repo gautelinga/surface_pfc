@@ -19,13 +19,15 @@ class GenericIC(df.UserExpression):
 
 
 class RandomIC(GenericIC):
-    def __init__(self, u_, amplitude=1.0, **kwargs):
+    def __init__(self, u_, amplitude=1.0, dims=1, **kwargs):
         self.amplitude = amplitude
+        self.dims = dims
         super().__init__(u_, **kwargs)
 
     def eval(self, values, x):
         super().eval(values, x)
-        values[0] = self.amplitude*(2*random.random()-1)
+        for d in range(self.dims):
+            values[d] = self.amplitude*(2*random.random()-1)
 
 
 class StripedIC(GenericIC):

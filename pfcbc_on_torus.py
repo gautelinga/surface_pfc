@@ -156,10 +156,10 @@ E_0 = (2*nu_**2 - 2 * geo_map.gab[i, j]*psi_.dx(i)*psi_.dx(j) + w(psi_, tau))
 E_2 = (h**2/12)*(2*(4*nuhat_**2 + 4*H*nuhat_*nu_ - 5*K*nu_**2)
                  - 2 * (2*H*nuhat_ - 2*K*gab[i, j]*psi_.dx(i)*psi_.dx(j))
                  + (tau/2)*K*psi_**2 + (1/4)*K*psi_**4)
-ts.add_scalar_field(E_0, "E_0")
-ts.add_scalar_field(E_2, "E_2")
-ts.add_scalar_field(df.sqrt(geo_map.gab[i, j]*mu_.dx(i)*mu_.dx(j)),
-                    "abs_grad_mu")
+ts.add_field(E_0, "E_0")
+ts.add_field(E_2, "E_2")
+ts.add_field(df.sqrt(geo_map.gab[i, j]*mu_.dx(i)*mu_.dx(j)),
+             "abs_grad_mu")
 
 
 # Set tau
