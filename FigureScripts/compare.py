@@ -1,4 +1,10 @@
 import argparse
+import os
+import sys
+# Find path to the root folder
+pfc_path = "/" + os.path.join(*os.path.realpath(__file__).split("/")[:-2])
+# ...and append it to sys.path to get functionality from pfc
+sys.path.append(pfc_path)
 from utilities.InterpolatedTimeSeries import InterpolatedTimeSeries
 from utilities.plot import plot_any_field
 from common.io import dump_xdmf
@@ -9,6 +15,13 @@ import matplotlib.pyplot as plt
 import matplotlib
 from matplotlib import rc
 import numpy as np
+
+
+def to_vector(A):
+    A_ = dict()
+    for idx, Aij in A.items():
+        A_[idx] = Aij.vector().get_local()
+    return A_
 
 
 def main():
@@ -50,11 +63,17 @@ def main():
     if "psi" not in fields:
         exit("No psi")
 
+    var_names = ["t", "s"]
+    index_names = ["tt", "st", "ss"]
+    index_numbers = [0, 1, 4]
+    indices = zip(index_names, index_numbers)
+    dim_names = ["x", "y", "z"]
+        
     # Loading geometry
     rad_t = []
     rad_s = []
-    g = []
-    g_inv = []
+    g_ab = []
+    gab = []
     for ts in tss:
         # Should compute these from the curvature tensor
         rad_t.append(df.interpolate(
@@ -62,21 +81,34 @@ def main():
         rad_s.append(df.interpolate(
                 df.Expression("x[1]", degree=2), ts.function_space))
 
-        g_loc = [ts.function(name) for name in ["gtt", "gst", "gss"]]
-        g_inv_loc = [ts.function(name) for name in ["g_tt", "g_st", "g_ss"]]
+        # g_loc = [ts.function(name) for name in ["gtt", "gst", "gss"]]
+        # g_inv_loc = [ts.function(name) for name in ["g_tt", "g_st", "g_ss"]]
 
-        for ij in range(3):
-            ts.set_val(g_loc[ij], ts.g[:, ij])
-            # Could compute the following locally instead of loading
-            ts.set_val(g_inv_loc[ij], ts.g_inv[:, ij])
+        gab_loc = dict([(idx, ts.function("g{}".format(idx)))
+                        for idx in index_names])
+        g_ab_loc = dict([(idx, ts.function("g_{}".format(idx)))
+                         for idx in index_names])
 
-        g.append(g_loc)
-        g_inv.append(g_inv_loc)
+        for idx, ij in indices:
+        # for ij in range(3):
+            # ts.set_val(g_loc[ij], ts.g[:, ij])
+            # ts.set_val(g_inv_loc[ij], ts.g_inv[:, ij])
+            ts.set_val(g_ab_loc[idx], ts.g_ab[:, ij])
+            # Could compute the gab locally instead of loading
+            ts.set_val(gab_loc[idx], ts.gab[:, ij])
+
+        g_ab_loc["ts"] = g_ab_loc["st"]
+        gab_loc["ts"] = gab_loc["st"]
+
+        g_ab.append(g_ab_loc)
+        gab.append(gab_loc)
 
     costheta = df.Function(ref_spaces["psi"], name="costheta")
     for its, ts in enumerate(tss):
         if args.time is not None:
             step, time = get_step_and_info(ts, args.time)
+        g_ab_ = to_vector(g_ab[its])
+        gab_ = to_vector(gab[its])
 
         ts.update(f_in[its]["psi"], "psi", step)
         psi = f_in[its]["psi"]
@@ -85,8 +117,15 @@ def main():
 
         gp_t = psi_t.vector().get_local()
         gp_s = psi_s.vector().get_local()
-        gtt, gst, gss = [g_ij.vector().get_local() for g_ij in g[its]]
-        g_tt, g_st, g_ss = [g_ij.vector().get_local() for g_ij in g_inv[its]]
+        # gtt, gst, gss = [g_ij.vector().get_local() for g_ij in g[its]]
+        # g_tt, g_st, g_ss = [g_ij.vector().get_local() for g_ij in g_inv[its]]
+        gtt = gab_["tt"]
+        gst = gab_["ts"]
+        gss = gab_["ss"]
+        g_tt = g_ab_["tt"]
+        g_st = g_ab_["ts"]
+        g_ss = g_ab_["ss"]
+
         rht = rad_t[its].vector().get_local()
         rhs = rad_s[its].vector().get_local()
         rh_norm = np.sqrt(g_tt*rht**2 + g_ss*rhs**2 + 2*g_st*rht*rhs)
@@ -103,7 +142,6 @@ def main():
         # costheta_loc.vector()[:] = np.sin(np.arccos((rht*gp_t + rhs*gp_s)/(rh_norm*gp_norm+1e-8)))**2
         # abs(theta):
         #costheta_loc.vector()[:] = abs(np.arccos((rht*gp_t + rhs*gp_s)/(rh_norm*gp_norm+1e-8)))
-
 
         costheta_intp = interpolate_nonmatching_mesh(costheta_loc,
                                                      ref_spaces["psi"])
