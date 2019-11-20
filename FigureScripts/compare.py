@@ -66,7 +66,6 @@ def main():
     var_names = ["t", "s"]
     index_names = ["tt", "st", "ss"]
     index_numbers = [0, 1, 4]
-    indices = zip(index_names, index_numbers)
     dim_names = ["x", "y", "z"]
         
     # Loading geometry
@@ -89,7 +88,7 @@ def main():
         g_ab_loc = dict([(idx, ts.function("g_{}".format(idx)))
                          for idx in index_names])
 
-        for idx, ij in indices:
+        for idx, ij in zip(index_names, index_numbers):
         # for ij in range(3):
             # ts.set_val(g_loc[ij], ts.g[:, ij])
             # ts.set_val(g_inv_loc[ij], ts.g_inv[:, ij])
@@ -99,22 +98,22 @@ def main():
 
         g_ab_loc["ts"] = g_ab_loc["st"]
         gab_loc["ts"] = gab_loc["st"]
-
+        
         g_ab.append(g_ab_loc)
         gab.append(gab_loc)
 
     costheta = df.Function(ref_spaces["psi"], name="costheta")
-    for its, ts in enumerate(tss):
+    for its, (ts, g_ab_loc, gab_loc) in enumerate(zip(tss, g_ab, gab)):
         if args.time is not None:
             step, time = get_step_and_info(ts, args.time)
-        g_ab_ = to_vector(g_ab[its])
-        gab_ = to_vector(gab[its])
+        g_ab_ = to_vector(g_ab_loc)
+        gab_ = to_vector(gab_loc)
 
         ts.update(f_in[its]["psi"], "psi", step)
         psi = f_in[its]["psi"]
         psi_t = df.project(psi.dx(0), ts.function_space)
         psi_s = df.project(psi.dx(1), ts.function_space)
-
+        
         gp_t = psi_t.vector().get_local()
         gp_s = psi_s.vector().get_local()
         # gtt, gst, gss = [g_ij.vector().get_local() for g_ij in g[its]]
@@ -131,7 +130,7 @@ def main():
         rh_norm = np.sqrt(g_tt*rht**2 + g_ss*rhs**2 + 2*g_st*rht*rhs)
         gp_norm = np.sqrt(gtt*gp_t**2 + gss*gp_s**2 + 2*gst*gp_t*gp_s)
 
-        costheta_loc = df.Function(ts.function_space)
+        costheta_loc = ts.function("costheta")
         # abs(cos(theta)):
         costheta_loc.vector()[:] = abs((rht*gp_t + rhs*gp_s)/(rh_norm*gp_norm+1e-8))
         # cos(theta)**2:
@@ -142,9 +141,10 @@ def main():
         # costheta_loc.vector()[:] = np.sin(np.arccos((rht*gp_t + rhs*gp_s)/(rh_norm*gp_norm+1e-8)))**2
         # abs(theta):
         #costheta_loc.vector()[:] = abs(np.arccos((rht*gp_t + rhs*gp_s)/(rh_norm*gp_norm+1e-8)))
-
+        
         costheta_intp = interpolate_nonmatching_mesh(costheta_loc,
                                                      ref_spaces["psi"])
+
         costheta.vector()[:] += costheta_intp.vector().get_local()/Ntss
 
     dump_xdmf(costheta)
