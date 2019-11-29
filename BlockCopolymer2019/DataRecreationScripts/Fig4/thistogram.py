@@ -1,8 +1,10 @@
 import argparse
-from utilities.InterpolatedTimeSeries import InterpolatedTimeSeries
-from utilities.plot import plot_any_field
-from common.io import dump_xdmf
-from postprocess import get_step_and_info
+#
+from surfaise.utilities.InterpolatedTimeSeries import InterpolatedTimeSeries
+# from surfaise.utilities.plot import plot_any_field
+from surfaise.common.io import dump_xdmf
+from surfaise.postprocess import get_step_and_info
+#
 from fenicstools import interpolate_nonmatching_mesh
 import dolfin as df
 import matplotlib.pyplot as plt
@@ -10,43 +12,49 @@ import numpy as np
 from matplotlib import rc
 import random
 
+
 def multiple_formatter(denominator=2, number=np.pi, latex='\pi'):
     def gcd(a, b):
         while b:
-            a, b = b, a%b
+            a, b = b, a % b
         return a
+
     def _multiple_formatter(x, pos):
         den = denominator
         num = np.int(np.rint(den*x/number))
         com = gcd(num,den)
-        (num,den) = (int(num/com),int(den/com))
-        if den==1:
-            if num==0:
+        (num, den) = (int(num/com), int(den/com))
+        if den == 1:
+            if num == 0:
                 return r'$0$'
-            if num==1:
-                return r'$%s$'%latex
-            elif num==-1:
-                return r'$-%s$'%latex
+            if num == 1:
+                return r'$%s$' % latex
+            elif num == -1:
+                return r'$-%s$' % latex
             else:
-                return r'$%s%s$'%(num,latex)
+                return r'$%s%s$' % (num, latex)
         else:
-            if num==1:
-                return r'$\frac{%s}{%s}$'%(latex,den)
-            elif num==-1:
-                return r'$\frac{-%s}{%s}$'%(latex,den)
+            if num == 1:
+                return r'$\frac{%s}{%s}$' % (latex, den)
+            elif num == -1:
+                return r'$\frac{-%s}{%s}$' % (latex, den)
             else:
-                return r'$\frac{%s%s}{%s}$'%(num,latex,den)
+                return r'$\frac{%s%s}{%s}$' % (num, latex, den)
     return _multiple_formatter
+
 
 class Multiple:
     def __init__(self, denominator=2, number=np.pi, latex='\pi'):
         self.denominator = denominator
         self.number = number
         self.latex = latex
+
     def locator(self):
         return plt.MultipleLocator(self.number / self.denominator)
+
     def formatter(self):
-        return plt.FuncFormatter(multiple_formatter(self.denominator, self.number, self.latex))
+        return plt.FuncFormatter(multiple_formatter(self.denominator,
+                                                    self.number, self.latex))
 
 
 def main():
@@ -112,11 +120,11 @@ def main():
 
     costheta = df.Function(ref_spaces["psi"], name="costheta")
     arrsiz = int(len(costheta.vector().get_local()))
-    print("Function vector size: ", arrsiz )
-    costhetas = np.zeros([arrsiz,Ntss])
-    nsamples=1000
-    costhetasamp=np.zeros([nsamples,Ntss])
-    #xmin=
+    print("Function vector size: ", arrsiz)
+    costhetas = np.zeros([arrsiz, Ntss])
+    nsamples = 1000
+    costhetasamp = np.zeros([nsamples, Ntss])
+
     for its, ts in enumerate(tss):
         if args.time is not None:
             step, time = get_step_and_info(ts, args.time)

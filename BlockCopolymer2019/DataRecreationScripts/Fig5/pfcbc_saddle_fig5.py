@@ -1,10 +1,14 @@
 import dolfin as df
-from maps import SaddleMapRound
-from common.io import Timeseries, save_checkpoint, load_checkpoint, \
-    load_parameters
-from common.cmd import mpi_max, parse_command_line, info_blue, info_cyan, info_red, mpi_any
-from common.utilities import QuarticPotential, TimeStepSelector, anneal_func
-from ics import StripedIC, RandomIC
+from surfaise import SaddleMapRound
+from surfaise.common.io import (
+    Timeseries, save_checkpoint, load_checkpoint,
+    load_parameters)
+from surfaise.common.cmd import (
+    mpi_max, parse_command_line, info_blue,
+    info_cyan, info_red, mpi_any)
+from surfaise.common.utilities import (
+    QuarticPotential, TimeStepSelector, anneal_func)
+from surfaise.ics import StripedIC, RandomIC
 import os
 import ufl
 import numpy as np
@@ -191,7 +195,7 @@ E_2 = (h**2/12)*(2*(4*nuhat_**2 + 4*H*nuhat_*nu_ - 5*K*nu_**2)
 ts.add_field(E_0, "E_0")
 ts.add_field(E_2, "E_2")
 ts.add_field(df.sqrt(geo_map.gab[i, j]*mu_.dx(i)*mu_.dx(j)),
-                    "abs_grad_mu")
+             "abs_grad_mu")
 
 # Step in time
 ts.dump(tstep)

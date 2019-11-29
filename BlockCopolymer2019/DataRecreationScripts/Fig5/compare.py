@@ -1,14 +1,12 @@
 import argparse
 import os
 import sys
-# Find path to the root folder
-#pfc_path = "/" + os.path.join(*os.path.realpath(__file__).split("/")[:-2])
-# ...and append it to sys.path to get functionality from pfc
-#sys.path.append(pfc_path)
-from utilities.InterpolatedTimeSeries import InterpolatedTimeSeries
-from utilities.plot import plot_any_field
-from common.io import dump_xdmf
-from postprocess import get_step_and_info
+#
+from surfaise.utilities.InterpolatedTimeSeries import InterpolatedTimeSeries
+from surfaise.utilities.plot import plot_any_field
+from surfaise.common.io import dump_xdmf
+from surfaise.postprocess import get_step_and_info
+#
 from fenicstools import interpolate_nonmatching_mesh, Probes
 import dolfin as df
 import matplotlib.pyplot as plt

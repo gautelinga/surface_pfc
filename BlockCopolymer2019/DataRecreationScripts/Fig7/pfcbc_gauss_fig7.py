@@ -1,10 +1,14 @@
 import dolfin as df
-from maps import GaussianBumpMapRound
-from common.io import Timeseries, save_checkpoint, load_checkpoint, \
-    load_parameters
-from common.cmd import mpi_max, parse_command_line, info_blue, info_cyan, info_red, mpi_any
-from common.utilities import QuarticPotential, TimeStepSelector, anneal_func
-from ics import StripedIC, RandomIC
+from surfaise import GaussianBumpMapRound
+from surfaise.common.io import (
+    Timeseries, save_checkpoint, load_checkpoint,
+    load_parameters)
+from surfaise.common.cmd import (
+    mpi_max, parse_command_line, info_blue,
+    info_cyan, info_red, mpi_any)
+from surfaise.common.utilities import (
+    QuarticPotential, TimeStepSelector, anneal_func)
+from surfaise.ics import StripedIC, RandomIC
 import os
 import ufl
 import numpy as np
