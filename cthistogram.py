@@ -1,8 +1,8 @@
 import argparse
-from utilities.InterpolatedTimeSeries import InterpolatedTimeSeries
-from utilities.plot import plot_any_field
-from common.io import dump_xdmf
-from postprocess import get_step_and_info
+from surfaise.utilities.InterpolatedTimeSeries import InterpolatedTimeSeries
+from surfaise.utilities.plot import plot_any_field
+from surfaise.common.io import dump_xdmf
+from surfaise.postprocess import get_step_and_info
 from fenicstools import interpolate_nonmatching_mesh
 import dolfin as df
 import matplotlib.pyplot as plt

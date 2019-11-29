@@ -1,10 +1,12 @@
 import dolfin as df
-from maps import TorusMap
-from common.io import Timeseries, save_checkpoint, load_checkpoint, \
-    load_parameters
-from common.cmd import mpi_max, parse_command_line, info_blue, info_cyan
-from common.utilities import QuarticPotential, TimeStepSelector
-from ics import StripedIC, RandomIC
+from surfaise import TorusMap
+from surfaise.common.io import (
+    Timeseries, save_checkpoint, load_checkpoint,
+    load_parameters)
+from surfaise.common.cmd import (
+    mpi_max, parse_command_line, info_blue, info_cyan)
+from surfaise.common.utilities import QuarticPotential, TimeStepSelector
+from surfaise.ics import StripedIC, RandomIC
 import os
 import ufl
 import numpy as np

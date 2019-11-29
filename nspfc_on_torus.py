@@ -1,13 +1,7 @@
 import dolfin as df
-from maps import TorusMap
-from common.io import Timeseries, save_checkpoint, load_checkpoint, \
-    load_parameters
-from common.cmd import mpi_max, parse_command_line, info_blue, info_cyan
-from common.utilities import QuarticPotential, TimeStepSelector
-from ics import StripedIC, RandomIC
+import surfaise as sf
 import os
 import ufl
-import numpy as np
 
 
 parameters = dict(
@@ -31,23 +25,24 @@ parameters = dict(
     init_mode="random",
     alpha=0.0,
 )
-cmd_kwargs = parse_command_line()
+cmd_kwargs = sf.cmd.parse_command_line()
 parameters.update(**cmd_kwargs)
 if parameters["restart_folder"]:
-    load_parameters(parameters, os.path.join(
+    sf.io.load_parameters(parameters, os.path.join(
         parameters["restart_folder"], "parameters.dat"))
     parameters.update(**cmd_kwargs)
 
 R = parameters["R"]
 r = parameters["r"]
 res = parameters["res"]
-dt = TimeStepSelector(parameters["dt"])
+dt = sf.TimeStepSelector(parameters["dt"])
 rho = df.Constant(parameters["rho"])
 eta = df.Constant(parameters["eta"])
 tau = df.Constant(parameters["tau"])
 M = df.Constant(parameters["M"])
 
-geo_map = TorusMap(R, r)
+# geo_map = TorusMap(R, r)
+geo_map = sf.EllipsoidMap(R, R, R, verbose=True, eps=1e-1)
 geo_map.initialize(res, restart_folder=parameters["restart_folder"])
 
 W = geo_map.mixed_space((geo_map.ref_el, geo_map.ref_el, geo_map.ref_el,
@@ -78,15 +73,15 @@ psi_1, mu_1, nu_1, u_1, p_1 = df.split(w_1)
 if parameters["restart_folder"] is None:
     init_mode = parameters["init_mode"]
     if init_mode == "random":
-        w_init = RandomIC(w_, degree=1)
+        w_init = sf.ics.RandomIC(w_, degree=1)
     else:
         exit("Unknown IC")
     w_1.interpolate(w_init)
     w_.assign(w_1)
 else:
-    load_checkpoint(parameters["restart_folder"], w_, w_1)
+    sf.io.load_checkpoint(parameters["restart_folder"], w_, w_1)
 
-w_pot = QuarticPotential()
+w_pot = sf.QuarticPotential()
 
 dw_stab = w_pot.derivative_stab(psi_, psi_1, tau)
 
@@ -121,7 +116,25 @@ F = F_PFC + F_NS
 
 J = df.derivative(F, w_, du=w)
 
-problem = df.NonlinearVariationalProblem(F, w_, J=J)
+x = geo_map.ref_mesh.coordinates()
+s_max = sf.cmd.mpi_max(x[:, 1])
+s_min = sf.cmd.mpi_min(x[:, 1])
+t_min = sf.cmd.mpi_min(x[:, 0])
+
+
+def poles(x, on_boundary):
+    return on_boundary and bool(x[1] <= s_min+df.DOLFIN_EPS_LARGE
+                                or x[1] >= s_max-df.DOLFIN_EPS_LARGE)
+
+
+u_bc = df.DirichletBC(W.sub(3).sub(1), df.Constant(0.),
+                      poles)
+# p_bc = df.DirichletBC(W.sub(1), df.Constant(0.),
+#                       "x[0] < {t_min} && x[1] < {s_min}".format(
+#                            t_min=t_min, s_min=s_min),
+#                       "pointwise")
+
+problem = df.NonlinearVariationalProblem(F, w_, J=J, bcs=[u_bc])
 solver = df.NonlinearVariationalSolver(problem)
 solver.parameters["newton_solver"]["absolute_tolerance"] = 1e-8
 solver.parameters["newton_solver"]["relative_tolerance"] = 1e-5
@@ -145,17 +158,18 @@ tstep = parameters["tstep"]
 T = parameters["T"]
 
 # Output file
-ts = Timeseries(parameters["folder"], w_,
-                field_names, geo_map, tstep,
-                parameters=parameters,
-                restart_folder=parameters["restart_folder"])
+ts = sf.io.Timeseries(parameters["folder"], w_,
+                      field_names, geo_map, tstep,
+                      parameters=parameters,
+                      restart_folder=parameters["restart_folder"])
 
 E_kin = 0.5*rho*geo_map.g_ab[i, j]*u_[i]*u_[j]
 divu = geo_map.CovD10(u_)[i, i]
 U = [sum([geo_map.get_function(xi + "_," + vj)*u_[dj]
           for dj, vj in enumerate(geo_map.AXIS_REF)])
      for xi in geo_map.AXIS]
-GradMu = [sum([geo_map.get_function(xi + "_," + vj)*geo_map.gab[i, dj]*mu_.dx(i)
+GradMu = [sum([geo_map.get_function(xi + "_," + vj)
+               * geo_map.gab[i, dj]*mu_.dx(i)
                for dj, vj in enumerate(geo_map.AXIS_REF)])
           for xi in geo_map.AXIS]
 
@@ -179,7 +193,7 @@ ts.dump(tstep)
 
 while t < T:
     tstep += 1
-    info_cyan("tstep = {}, time = {}".format(tstep, t))
+    sf.cmd.info_cyan("tstep = {}, time = {}".format(tstep, t))
 
     w_1.assign(w_)
 
@@ -189,9 +203,10 @@ while t < T:
             solver.solve()
             converged = True
         except:
-            info_blue("Did not converge. Chopping timestep.")
+            sf.cmd.info_blue("Did not converge. Chopping timestep.")
             dt.chop()
-            info_blue("New timestep is: dt = {}".format(dt.get()))
+            sf.cmd.info_blue("New timestep is: dt = {}".format(dt.get()))
+            w_.assign(w_1)
 
     # Update time with final dt value
     t += dt.get()
@@ -200,21 +215,18 @@ while t < T:
         ts.dump(t)
 
     # Assigning timestep size according to grad_mu_max:
-
-    # grad_mu = ts.get_function("abs_grad_mu")
     grad_mu = df.project(grad_mu_ufl, geo_map.S_ref)
-    grad_mu_max = mpi_max(grad_mu.vector().get_local())
-    # u_norm = ts.get_function("u_norm")
+    grad_mu_max = sf.cmd.mpi_max(grad_mu.vector().get_local())
     u_norm = df.project(u_norm_ufl, geo_map.S_ref)
-    u_norm_max = mpi_max(u_norm.vector().get_local())
+    u_norm_max = sf.cmd.mpi_max(u_norm.vector().get_local())
 
     vel_max = max(u_norm_max, grad_mu_max)
 
     dt_prev = dt.get()
     dt.set(min(0.2/vel_max, T-t))
 
-    info_blue("dt = {}".format(dt.get()))
-    if tstep % parameters["stats_intv"] == 0:
+    sf.cmd.info_blue("dt = {}".format(dt.get()))
+    if tstep % parameters["stats_intv"] == 0 or t >= T:
         E_kin_out = df.assemble(geo_map.form(E_kin))
         E_psi_out = df.assemble(geo_map.form(E_psi))
         divu_out = df.assemble(geo_map.form(divu))
@@ -224,5 +236,5 @@ while t < T:
                       "data")
 
     if tstep % parameters["checkpoint_intv"] == 0 or t >= T:
-        save_checkpoint(tstep, t, geo_map.ref_mesh,
-                        w_, w_1, ts.folder, parameters)
+        sf.io.save_checkpoint(tstep, t, geo_map.ref_mesh,
+                              w_, w_1, ts.folder, parameters)

@@ -1,10 +1,13 @@
 import dolfin as df
-from maps import TorusMap, EllipsoidMap
-from common.io import Timeseries, save_checkpoint, load_checkpoint, \
-    load_parameters
-from common.cmd import mpi_max, parse_command_line, info_blue, info_cyan
-from common.utilities import QuarticPotential, TimeStepSelector, anneal_func
-from ics import StripedIC, RandomIC
+from surfaise import TorusMap, EllipsoidMap
+from surfaise.common.io import (
+    Timeseries, save_checkpoint, load_checkpoint,
+    load_parameters)
+from surfaise.common.cmd import (
+    mpi_max, parse_command_line, info_blue, info_cyan)
+from surfaise.common.utilities import (
+    QuarticPotential, TimeStepSelector, anneal_func)
+from surfaise.ics import StripedIC, RandomIC
 import os
 import ufl
 import numpy as np
@@ -157,10 +160,10 @@ E_0 = (2*nu_**2 - 2 * geo_map.gab[i, j]*psi_.dx(i)*psi_.dx(j) + w(psi_, tau))
 E_2 = (h**2/12)*(2*(4*nuhat_**2 + 4*H*nuhat_*nu_ - 5*K*nu_**2)
                  - 2 * (2*H*nuhat_ - 2*K*gab[i, j]*psi_.dx(i)*psi_.dx(j))
                  + (tau/2)*K*psi_**2 + (1/4)*K*psi_**4)
-ts.add_scalar_field(E_0, "E_0")
-ts.add_scalar_field(E_2, "E_2")
-ts.add_scalar_field(df.sqrt(geo_map.gab[i, j]*mu_.dx(i)*mu_.dx(j)),
-                    "abs_grad_mu")
+ts.add_field(E_0, "E_0")
+ts.add_field(E_2, "E_2")
+ts.add_field(df.sqrt(geo_map.gab[i, j]*mu_.dx(i)*mu_.dx(j)),
+             "abs_grad_mu")
 
 # Step in time
 ts.dump(tstep)

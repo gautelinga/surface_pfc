@@ -1,10 +1,10 @@
 import dolfin as df
-from maps import EllipsoidMap, CylinderMap
-from common.io import Timeseries, save_checkpoint, load_checkpoint, \
-    load_parameters
-from common.cmd import parse_command_line
-from common.utilities import QuarticPotential
-from ics import RandomIC
+from surfaise import EllipsoidMap, CylinderMap
+from surfaise.common.io import (
+    Timeseries, save_checkpoint, load_checkpoint, load_parameters)
+from surfaise.common.cmd import parse_command_line
+from surfaise import QuarticPotential
+from surfaise.ics import RandomIC
 import os
 
 
@@ -113,7 +113,7 @@ ts = Timeseries(parameters["folder"], u_, ("psi", "nu", "nuhat"),
                 parameters=parameters,
                 restart_folder=parameters["restart_folder"])
 E_0 = (2*nu_**2 - 2*geo_map.dotgrad(psi_, psi_) + w(psi_, tau))
-ts.add_scalar_field(E_0, "E_0")
+ts.add_field(E_0, "E_0")
 
 ts.dump(tstep)
 

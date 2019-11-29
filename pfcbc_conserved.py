@@ -1,15 +1,17 @@
 import dolfin as df
-from maps import EllipsoidMap, CylinderMap, GaussianBumpMap
-from common.io import Timeseries, save_checkpoint, load_checkpoint, \
-    load_parameters
-from common.cmd import mpi_max, parse_command_line, info_blue
-from common.utilities import QuarticPotential
-from ics import RandomIC, MMSIC, AroundStripedIC, AlongStripedIC, \
-    CircularStripedIC
+from surfaise import EllipsoidMap, CylinderMap, GaussianBumpMap
+from surfaise.common.io import (
+    Timeseries, save_checkpoint, load_checkpoint,
+    load_parameters)
+from surfaise.common.cmd import mpi_max, parse_command_line, info_blue
+from surfaise.common.utilities import QuarticPotential
+from surfaise.ics import (
+    RandomIC, MMSIC, AroundStripedIC, AlongStripedIC,
+    CircularStripedIC)
 import os
 import ufl
 import numpy as np
-from common.MMS import ManufacturedSolution
+from surfaise.utilities.MMS import ManufacturedSolution
 import sympy as sp
 
 parameters = dict(
@@ -45,13 +47,15 @@ h = df.Constant(parameters["h"])
 M = parameters["M"]
 
 # geo_map = EllipsoidMap(R, R, R)
-geo_map = GaussianBumpMap(7*R, 7*R, 2*R,R)
+geo_map = GaussianBumpMap(7*R, 7*R, 2*R, R)
 # geo_map = CylinderMap(R, 2*np.pi*R)
 geo_map.initialize(res, restart_folder=parameters["restart_folder"])
 
 # Initialize the Method of Manufactured Solutions:
-psi_mms_input = ((sp.sin(geo_map.s/sp.sqrt(2)))**2
-                 + (sp.sin(geo_map.t/sp.sqrt(2)))**2)
+s = geo_map.r_ref["s"]
+t = geo_map.r_ref["t"]
+psi_mms_input = ((sp.sin(s/sp.sqrt(2)))**2
+                 + (sp.sin(t/sp.sqrt(2)))**2)
 # Note that the Initial Condition must also be separately specified.
 my_mms = ManufacturedSolution(geo_map, psi_mms_input)
 psiMMS = my_mms.psi()
@@ -89,15 +93,19 @@ else:
 
 w = QuarticPotential()
 
-# Define the functional form of the reduced temperature (if non-uniforum temperature desired)
-tau_h = 3 # High temperature (parameter)
-rh = 4*R/5 # Radius where temperature shifts
-k = 1/100 # Temperature shift rate
-taufunction = df.Expression('tau + (tauh-tau)/(1 + exp(-k*(x[0]*x[0]+x[1]*x[1]-rh*rh ) ) )', k=k, tau=tau, tauh=tau_h, rh=rh, degree=2)
+# Define the functional form of the reduced temperature (if
+# non-uniforum temperature desired)
+tau_h = 3  # High temperature (parameter)
+rh = 4*R/5  # Radius where temperature shifts
+k = 1/100  # Temperature shift rate
+taufunction = df.Expression(
+    'tau + (tauh-tau)/(1 + exp(-k*(x[0]*x[0]+x[1]*x[1]-rh*rh ) ) )',
+    k=k, tau=tau, tauh=tau_h, rh=rh, degree=2)
 
-# Choose between uniform (tau) or non-uniform (taufunction) reduced temperature:
+# Choose between uniform (tau) or non-uniform (taufunction) reduced
+# temperature:
 dw_lin = w.derivative_linearized(psi, psi_1, taufunction)
-#dw_lin = w.derivative_linearized(psi, psi_1, tau)
+# dw_lin = w.derivative_linearized(psi, psi_1, tau)
 
 # Define some UFL indices:
 i, j, k, l = ufl.Index(), ufl.Index(), ufl.Index(), ufl.Index()
@@ -133,7 +141,7 @@ F_psi = geo_map.form(1/dt * (psi - psi_1) * chi
 
 # Enable/disable Manufactured Solution by choosing one of the two lines below:
 F_mu = geo_map.form(mu*xi - m)
-#F_mu = geo_map.form(mu*xi - m + mMMS)
+# F_mu = geo_map.form(mu*xi - m + mMMS)
 
 F_nu = geo_map.form(nu*eta + geo_map.gab[i, j]*psi.dx(i)*eta.dx(j))
 F_nuhat = geo_map.form(nuhat*etahat + geo_map.Kab[i, j]*psi.dx(i)*etahat.dx(j))
@@ -147,8 +155,8 @@ L = df.rhs(F)
 problem = df.LinearVariationalProblem(a, L, u_)
 solver = df.LinearVariationalSolver(problem)
 
-#solver.parameters["linear_solver"] = "gmres"
-#solver.parameters["preconditioner"] = "jacobi"
+# solver.parameters["linear_solver"] = "gmres"
+# solver.parameters["preconditioner"] = "jacobi"
 
 df.parameters["form_compiler"]["optimize"] = True
 df.parameters["form_compiler"]["cpp_optimize"] = True
@@ -169,9 +177,9 @@ K = geo_map.K
 gab = geo_map.gab
 
 E_0 = (2*nu_**2 - 2 * geo_map.gab[i, j]*psi_.dx(i)*psi_.dx(j) + w(psi_, tau))
-ts.add_scalar_field(E_0, "E_0")
-ts.add_scalar_field(df.sqrt(geo_map.gab[i, j]*mu_.dx(i)*mu_.dx(j)),
-                    "abs_grad_mu")
+ts.add_field(E_0, "E_0")
+ts.add_field(df.sqrt(geo_map.gab[i, j]*mu_.dx(i)*mu_.dx(j)),
+             "abs_grad_mu")
 
 # Step in time
 ts.dump(tstep)
@@ -191,18 +199,24 @@ while t < T:
     if tstep % 1 == 0:
         # ts.dump(tstep)
         ts.dump(t)
-        E_0 = (2*nu_**2 - 2 * geo_map.gab[i, j]*psi_.dx(i)*psi_.dx(j) + w(psi_, tau))
+        E_0 = (2*nu_**2 - 2 * geo_map.gab[i, j]*psi_.dx(i)*psi_.dx(j)
+               + w(psi_, tau))
         E_nonK = df.assemble(geo_map.form(E_0))
-        E_K = df.assemble(geo_map.form((h**2/12)*(2*(4*nuhat_**2 + 4*H*nuhat_*nu_ - 5*K*nu_**2) - 2 * (2*H*nuhat_ - 2*K*gab[i,j]*psi_.dx(i)*psi_.dx(j)) + (tau/2)*K*psi_**2 + (1/4)*K*psi_**4))) # Double checked for correctness
+        E_K = df.assemble(geo_map.form((h**2/12)*(
+            2*(4*nuhat_**2 + 4*H*nuhat_*nu_ - 5*K*nu_**2)
+            - 2 * (2*H*nuhat_ - 2*K*gab[i, j]*psi_.dx(i)*psi_.dx(j))
+            + (tau/2)*K*psi_**2 + (1/4)*K*psi_**4)))
+        # Double checked for correctness
         E_tot = E_nonK+E_K
         grad_mu = ts.get_function("abs_grad_mu")
         grad_mu_max = mpi_max(grad_mu.vector().get_local())
         # Assigning timestep size according to grad_mu_max:
-        dt.assign(max(0.01,0.5/grad_mu_max))
+        dt.assign(max(0.01, 0.5/grad_mu_max))
         info_blue("t = {}".format(t))
         info_blue("dt = {}".format(float(dt.values())))
         info_blue("noise = {}".format(initial_noise))
-        ts.dump_stats(t, [grad_mu_max, float(dt.values()), float(h.values()), E_nonK, E_K, E_tot], "data")
+        ts.dump_stats(t, [grad_mu_max, float(
+            dt.values()), float(h.values()), E_nonK, E_K, E_tot], "data")
 
     if tstep % parameters["checkpoint_intv"] == 0 or t >= T:
         save_checkpoint(tstep, t, geo_map.ref_mesh,

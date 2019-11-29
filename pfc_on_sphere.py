@@ -1,9 +1,7 @@
 import dolfin as df
-from maps import SphereMap, EllipsoidMap
-from common.io import dump_xdmf, Timeseries
-import random
-import numpy as np
-from ics import RandomIC
+from surfaise import EllipsoidMap
+from surfaise.common.io import Timeseries
+from surfaise.ics import RandomIC
 
 
 R = 30.0
