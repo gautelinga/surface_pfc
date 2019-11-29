@@ -1,10 +1,14 @@
 import dolfin as df
-from maps import  BumpyMap
-from common.io import Timeseries, save_checkpoint, load_checkpoint, \
-    load_parameters
-from common.cmd import mpi_max, parse_command_line, info_blue, info_cyan, info_red, mpi_any
-from common.utilities import QuarticPotential, TimeStepSelector, anneal_func
-from ics import StripedIC, RandomIC
+from surfaise import BumpyMap
+from surfaise.common.io import (
+    Timeseries, save_checkpoint, load_checkpoint,
+    load_parameters)
+from surfaise.common.cmd import (
+    mpi_max, parse_command_line, info_blue,
+    info_cyan, info_red, mpi_any)
+from surfaise.common.utilities import (
+    QuarticPotential, TimeStepSelector, anneal_func)
+from surfaise.ics import StripedIC, RandomIC
 import os
 import ufl
 import numpy as np
@@ -60,7 +64,7 @@ k_max = 0.1/np.sqrt(2)
 # The next two lines supply the amplitudes and wavenumbers to BumpyMap. Should perhaps be made internal to the BumpyMap-function in the future.
 amplitudes = np.random.random(n_terms)*A_max
 wavenumbers = 2*(np.random.random(n_terms*4)-0.5)*k_max
-geo_map = BumpyMap(R, R, amplitudes ,wavenumbers)
+geo_map = BumpyMap(R, R, amplitudes, wavenumbers)
 
 geo_map.initialize(res, restart_folder=parameters["restart_folder"])
 
@@ -184,10 +188,10 @@ E_0 = (2*nu_**2 - 2 * geo_map.gab[i, j]*psi_.dx(i)*psi_.dx(j) + w(psi_, tau))
 E_2 = (h**2/12)*(2*(4*nuhat_**2 + 4*H*nuhat_*nu_ - 5*K*nu_**2)
                  - 2 * (2*H*nuhat_ - 2*K*gab[i, j]*psi_.dx(i)*psi_.dx(j))
                  + (tau/2)*K*psi_**2 + (1/4)*K*psi_**4)
-ts.add_scalar_field(E_0, "E_0")
-ts.add_scalar_field(E_2, "E_2")
-ts.add_scalar_field(df.sqrt(geo_map.gab[i, j]*mu_.dx(i)*mu_.dx(j)),
-                    "abs_grad_mu")
+ts.add_field(E_0, "E_0")
+ts.add_field(E_2, "E_2")
+ts.add_field(df.sqrt(geo_map.gab[i, j]*mu_.dx(i)*mu_.dx(j)),
+             "abs_grad_mu")
 
 # Step in time
 ts.dump(tstep)
@@ -199,7 +203,7 @@ while t < T:
     info_cyan("tstep = {}, time = {}".format(tstep, t))
 
     # Print max difference since last timestep:
-    dumax=mpi_max(abs(u_.vector().get_local()-u_1.vector().get_local()))
+    dumax = mpi_max(abs(u_.vector().get_local()-u_1.vector().get_local()))
     info_blue("max(u_ - u_1) = {}".format(dumax))
 
     u_1.assign(u_)
